@@ -1,0 +1,24 @@
+# Redis
+redis==5.0.1
+hiredis==2.3.2
+
+# AWS SDK
+boto3==1.34.19
+botocore==1.34.19
+
+# HTTP Client
+requests==2.31.0
+urllib3==2.1.0
+
+# Utilities
+python-json-logger==2.0.7
+prometheus-client==0.19.0
+
+# Development
+pytest==7.4.4
+pytest-asyncio==0.23.3
+pytest-cov==4.1.0
+pytest-mock==3.12.0
+black==24.1.1
+flake8==7.0.0
+mypy==1.8.0

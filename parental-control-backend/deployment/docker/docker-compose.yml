@@ -1,0 +1,257 @@
+version: '3.8'
+
+services:
+  # Zookeeper for Kafka
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    hostname: zookeeper
+    container_name: pc-zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper-data:/var/lib/zookeeper/data
+      - zookeeper-logs:/var/lib/zookeeper/log
+    networks:
+      - parental-control
+
+  # Kafka
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    hostname: kafka
+    container_name: pc-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    networks:
+      - parental-control
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    hostname: redis
+    container_name: pc-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - parental-control
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # DynamoDB Local
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    hostname: dynamodb-local
+    container_name: pc-dynamodb-local
+    ports:
+      - "8000:8000"
+    command: "-jar DynamoDBLocal.jar -sharedDb -dbPath /data"
+    volumes:
+      - dynamodb-data:/data
+    networks:
+      - parental-control
+
+  # P-Gateway Simulator
+  p-gateway-simulator:
+    build:
+      context: ../../services/p-gateway-simulator
+      dockerfile: Dockerfile
+    container_name: pc-p-gateway-simulator
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_TOPIC: session-data
+      KAFKA_ANALYTICS_TOPIC: blocked-requests
+      LOG_LEVEL: INFO
+      SESSIONS_PER_SECOND: 5
+    networks:
+      - parental-control
+    restart: unless-stopped
+
+  # Kafka Subscriber
+  kafka-subscriber:
+    build:
+      context: ../../services/kafka-subscriber
+      dockerfile: Dockerfile
+    container_name: pc-kafka-subscriber
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      dynamodb-local:
+        condition: service_started
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_TOPIC: session-data
+      KAFKA_GROUP_ID: parental-control-subscriber
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      AWS_REGION: ap-south-1
+      AWS_ACCESS_KEY_ID: dummy
+      AWS_SECRET_ACCESS_KEY: dummy
+      DYNAMODB_ENDPOINT: http://dynamodb-local:8000
+      DYNAMODB_TABLE_POLICIES: ParentalPolicies
+      DYNAMODB_TABLE_APP_REGISTRY: ApplicationRegistry
+      DYNAMODB_TABLE_HISTORY: EnforcementHistory
+      LOG_LEVEL: INFO
+    networks:
+      - parental-control
+    restart: unless-stopped
+
+  # Policy Enforcer
+  policy-enforcer:
+    build:
+      context: ../../services/policy-enforcer
+      dockerfile: Dockerfile
+    container_name: pc-policy-enforcer
+    depends_on:
+      redis:
+        condition: service_healthy
+      dynamodb-local:
+        condition: service_started
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      AWS_REGION: ap-south-1
+      AWS_ACCESS_KEY_ID: dummy
+      AWS_SECRET_ACCESS_KEY: dummy
+      DYNAMODB_ENDPOINT: http://dynamodb-local:8000
+      DYNAMODB_TABLE_POLICIES: ParentalPolicies
+      DYNAMODB_TABLE_FTD_MAPPING: FTDRuleMapping
+      DYNAMODB_TABLE_HISTORY: EnforcementHistory
+      DYNAMODB_TABLE_METRICS: BlockedRequestMetrics
+      SQS_ENFORCEMENT_QUEUE_URL: ""
+      FTD_SERVICE_URL: http://ftd-integration:5000
+      LOG_LEVEL: INFO
+    networks:
+      - parental-control
+    restart: unless-stopped
+
+  # FTD Integration Service
+  ftd-integration:
+    build:
+      context: ../../services/ftd-integration
+      dockerfile: Dockerfile
+    container_name: pc-ftd-integration
+    ports:
+      - "5000:5000"
+    environment:
+      FTD_HOST: ftd.example.com
+      FTD_USERNAME: admin
+      FTD_PASSWORD: changeme
+      FTD_VERIFY_SSL: "false"
+      LOG_LEVEL: INFO
+      API_PORT: 5000
+    networks:
+      - parental-control
+    restart: unless-stopped
+
+  # Analytics Dashboard API
+  analytics-dashboard:
+    build:
+      context: ../../services/analytics-dashboard
+      dockerfile: Dockerfile
+    container_name: pc-analytics-dashboard
+    depends_on:
+      - dynamodb-local
+    ports:
+      - "8000:8000"
+    environment:
+      AWS_REGION: ap-south-1
+      AWS_ACCESS_KEY_ID: dummy
+      AWS_SECRET_ACCESS_KEY: dummy
+      DYNAMODB_ENDPOINT: http://dynamodb-local:8000
+      DYNAMODB_TABLE_POLICIES: ParentalPolicies
+      DYNAMODB_TABLE_METRICS: BlockedRequestMetrics
+      DYNAMODB_TABLE_HISTORY: EnforcementHistory
+      LOG_LEVEL: INFO
+      API_PORT: 8000
+      CORS_ORIGINS: "*"
+    networks:
+      - parental-control
+    restart: unless-stopped
+
+  # DynamoDB Admin (UI for local DynamoDB)
+  dynamodb-admin:
+    image: aaronshaf/dynamodb-admin:latest
+    container_name: pc-dynamodb-admin
+    depends_on:
+      - dynamodb-local
+    ports:
+      - "8001:8001"
+    environment:
+      DYNAMO_ENDPOINT: http://dynamodb-local:8000
+      AWS_REGION: ap-south-1
+      AWS_ACCESS_KEY_ID: dummy
+      AWS_SECRET_ACCESS_KEY: dummy
+    networks:
+      - parental-control
+
+  # Redis Commander (UI for Redis)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: pc-redis-commander
+    depends_on:
+      - redis
+    ports:
+      - "8081:8081"
+    environment:
+      REDIS_HOSTS: local:redis:6379
+    networks:
+      - parental-control
+
+  # Kafka UI
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: pc-kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    networks:
+      - parental-control
+
+networks:
+  parental-control:
+    driver: bridge
+
+volumes:
+  zookeeper-data:
+  zookeeper-logs:
+  kafka-data:
+  redis-data:
+  dynamodb-data:

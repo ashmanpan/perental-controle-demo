@@ -1,0 +1,54 @@
+# Multi-stage build for Kafka Subscriber
+
+# Stage 1: Builder
+FROM python:3.11-slim as builder
+
+WORKDIR /build
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    librdkafka-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir --user -r requirements.txt
+
+# Stage 2: Runtime
+FROM python:3.11-slim
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH=/root/.local/bin:$PATH
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    librdkafka1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app directory
+WORKDIR /app
+
+# Copy Python packages from builder
+COPY --from=builder /root/.local /root/.local
+
+# Copy application code
+COPY src/ ./src/
+
+# Create non-root user
+RUN useradd -m -u 1000 subscriber && \
+    chown -R subscriber:subscriber /app
+
+USER subscriber
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD python -c "from src.redis_updater import RedisUpdater; from src.config import load_config; RedisUpdater(load_config()).health_check()" || exit 1
+
+# Run the consumer
+CMD ["python", "src/consumer.py"]

@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parental Control - Cisco AI Family Safety</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+
+        body {
+            background-color: #0a0a0a;
+            color: #ffffff;
+            min-height: 100vh;
+            overflow-x: hidden;
+            overflow-y: auto;
+        }
+
+        .bg-animation {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            opacity: 0.3;
+        }
+
+        .bg-animation::before,
+        .bg-animation::after {
+            content: '';
+            position: absolute;
+            border-radius: 50%;
+            background: radial-gradient(circle, #00ff88 0%, transparent 70%);
+            animation: float 20s infinite ease-in-out;
+        }
+
+        .bg-animation::before {
+            width: 600px;
+            height: 600px;
+            top: -30%;
+            left: -30%;
+        }
+
+        .bg-animation::after {
+            width: 800px;
+            height: 800px;
+            bottom: -40%;
+            right: -40%;
+            animation-delay: -10s;
+            background: radial-gradient(circle, #00aaff 0%, transparent 70%);
+        }
+
+        @keyframes float {
+            0%, 100% {
+                transform: translate(0, 0) scale(1);
+            }
+            25% {
+                transform: translate(100px, -50px) scale(1.1);
+            }
+            50% {
+                transform: translate(-50px, 100px) scale(0.9);
+            }
+            75% {
+                transform: translate(50px, 50px) scale(1.05);
+            }
+        }
+
+        /* Navigation Header */
+        .nav-header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: rgba(10, 10, 10, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid #333;
+            z-index: 1000;
+            padding: 1rem 2rem;
+        }
+
+        .nav-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .nav-logo {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .nav-logo img {
+            height: 40px;
+        }
+
+        .nav-logo span {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .nav-menu {
+            display: flex;
+            gap: 2rem;
+            align-items: center;
+        }
+
+        .nav-link {
+            color: #aaa;
+            text-decoration: none;
+            font-size: 1rem;
+            transition: color 0.3s ease;
+        }
+
+        .nav-link:hover {
+            color: #00ff88;
+        }
+
+        .container {
+            max-width: 1200px;
+            width: 100%;
+            margin: 100px auto 2rem;
+            padding: 2rem;
+            z-index: 1;
+            overflow-y: visible;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            background: linear-gradient(45deg, #00ff88, #00aaff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+        }
+
+        .header p {
+            color: #888;
+            font-size: 1.1rem;
+        }
+
+        /* Login Section */
+        .login-section {
+            background: linear-gradient(135deg, #111111 0%, #1a1a1a 100%);
+            border: 2px solid #333;
+            border-radius: 20px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .login-section.hidden {
+            display: none;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group label {
+            display: block;
+            color: #aaa;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid #333;
+            border-radius: 10px;
+            color: #fff;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #00ff88;
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .btn {
+            padding: 0.75rem 2rem;
+            background: linear-gradient(45deg, #00ff88, #00aaff);
+            color: #000;
+            border: none;
+            border-radius: 25px;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 10px 30px rgba(0, 255, 136, 0.5);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(45deg, #666, #888);
+            margin-left: 1rem;
+        }
+
+        /* Child Management Section */
+        .child-management {
+            display: none;
+        }
+
+        .child-management.active {
+            display: block;
+        }
+
+        .child-list {
+            background: linear-gradient(135deg, #111111 0%, #1a1a1a 100%);
+            border: 2px solid #333;
+            border-radius: 20px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .child-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid #444;
+            border-radius: 10px;
+            margin-bottom: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .child-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: #00ff88;
+        }
+
+        .child-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .child-icon {
+            font-size: 2rem;
+        }
+
+        .child-details h3 {
+            color: #fff;
+            margin-bottom: 0.25rem;
+        }
+
+        .child-details p {
+            color: #888;
+            font-size: 0.9rem;
+        }
+
+        .btn-small {
+            padding: 0.5rem 1.5rem;
+            font-size: 0.9rem;
+        }
+
+        /* App Controls Section */
+        .app-controls {
+            display: none;
+        }
+
+        .app-controls.active {
+            display: block;
+        }
+
+        .controls-header {
+            background: linear-gradient(135deg, #111111 0%, #1a1a1a 100%);
+            border: 2px solid #333;
+            border-radius: 20px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .controls-header h2 {
+            color: #00ff88;
+        }
+
+        .apps-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .app-card {
+            background: linear-gradient(135deg, #111111 0%, #1a1a1a 100%);
+            border: 2px solid #333;
+            border-radius: 15px;
+            padding: 1.5rem;
+            transition: all 0.3s ease;
+        }
+
+        .app-card:hover {
+            border-color: #00ff88;
+            box-shadow: 0 10px 30px rgba(0, 255, 136, 0.2);
+        }
+
+        .app-card.blocked {
+            border-color: #ff4444;
+            opacity: 0.7;
+        }
+
+        .app-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .app-icon {
+            font-size: 3rem;
+            filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+        }
+
+        .app-info h3 {
+            color: #fff;
+            margin-bottom: 0.25rem;
+            font-size: 1.1rem;
+        }
+
+        .app-category {
+            color: #888;
+            font-size: 0.85rem;
+        }
+
+        .app-toggle {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-top: 1rem;
+            border-top: 1px solid #333;
+        }
+
+        .toggle-label {
+            color: #aaa;
+            font-size: 0.9rem;
+        }
+
+        /* Toggle Switch */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 30px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ff4444;
+            transition: 0.4s;
+            border-radius: 30px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 22px;
+            width: 22px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: 0.4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: #00ff88;
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(30px);
+        }
+
+        .add-child-form {
+            background: rgba(0, 255, 136, 0.05);
+            border: 1px solid #00ff88;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-top: 1rem;
+            display: none;
+        }
+
+        .add-child-form.active {
+            display: block;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .form-row .form-group {
+            flex: 1;
+            margin-bottom: 0;
+        }
+
+        @media (max-width: 768px) {
+            html {
+                overflow-y: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            body {
+                min-height: 100vh;
+                height: auto;
+                overflow-y: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            .nav-header {
+                padding: 0.75rem 1rem;
+            }
+
+            .nav-logo img {
+                height: 30px;
+            }
+
+            .nav-logo span {
+                font-size: 1rem;
+            }
+
+            .nav-menu {
+                gap: 1rem;
+            }
+
+            .nav-link {
+                font-size: 0.85rem;
+            }
+
+            .container {
+                margin-top: 70px;
+                padding: 1rem;
+                margin-bottom: 2rem;
+            }
+
+            .header {
+                margin-bottom: 2rem;
+            }
+
+            .header h1 {
+                font-size: 1.75rem;
+            }
+
+            .header p {
+                font-size: 0.95rem;
+            }
+
+            .login-section,
+            .child-list,
+            .app-card {
+                padding: 1.25rem;
+            }
+
+            .apps-grid {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+            }
+
+            .form-row {
+                flex-direction: column;
+            }
+
+            .form-group input {
+                font-size: 16px; /* Prevents zoom on iOS */
+            }
+
+            .btn {
+                width: 100%;
+                padding: 0.875rem 1.5rem;
+            }
+
+            .btn-secondary {
+                margin-left: 0;
+                margin-top: 0.75rem;
+                width: 100%;
+            }
+
+            .btn-small {
+                padding: 0.625rem 1.25rem;
+                font-size: 0.85rem;
+            }
+
+            .controls-header {
+                flex-direction: column;
+                gap: 1rem;
+                align-items: flex-start;
+            }
+
+            .controls-header .btn-small {
+                width: 100%;
+            }
+
+            .child-item {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 1rem;
+            }
+
+            .child-item .btn-small {
+                width: 100%;
+            }
+
+            .app-header {
+                gap: 0.75rem;
+            }
+
+            .app-icon {
+                font-size: 2.5rem;
+            }
+
+            .app-info h3 {
+                font-size: 1rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .header h1 {
+                font-size: 1.5rem;
+            }
+
+            .container {
+                padding: 0.75rem;
+            }
+
+            .nav-logo span {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-animation"></div>
+
+    <!-- Navigation Header -->
+    <header class="nav-header">
+        <div class="nav-container">
+            <div class="nav-logo">
+                <img src="ciscologo.jpg" alt="Cisco Logo">
+                <span>AI Family Safety</span>
+            </div>
+            <nav class="nav-menu">
+                <a href="#" class="nav-link" onclick="return false;" style="cursor: default; opacity: 0.5;">Cisco AI Family Safety</a>
+            </nav>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="header">
+            <h1>🛡️ Parental Control Center</h1>
+            <p>Manage your children's digital safety and app access</p>
+        </div>
+
+        <!-- Login Section -->
+        <div class="login-section" id="loginSection">
+            <h2 style="margin-bottom: 1.5rem; color: #fff;" id="authTitle">Parent Login</h2>
+
+            <!-- Login Form -->
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="parentEmail">Email Address</label>
+                    <input type="email" id="parentEmail" placeholder="Enter your email" required>
+                </div>
+                <div class="form-group">
+                    <label for="parentPassword">Password</label>
+                    <input type="password" id="parentPassword" placeholder="Enter your password" required>
+                </div>
+                <button type="submit" class="btn">Login</button>
+                <button type="button" class="btn btn-secondary" onclick="toggleAuthForm()">Create Account</button>
+            </form>
+
+            <!-- Create Account Form -->
+            <form id="createAccountForm" style="display: none;">
+                <div class="form-group">
+                    <label for="newParentName">Full Name</label>
+                    <input type="text" id="newParentName" placeholder="Enter your name" required>
+                </div>
+                <div class="form-group">
+                    <label for="newParentEmail">Email Address</label>
+                    <input type="email" id="newParentEmail" placeholder="Enter your email" required>
+                </div>
+                <div class="form-group">
+                    <label for="newParentPassword">Password</label>
+                    <input type="password" id="newParentPassword" placeholder="Create a password" required>
+                </div>
+                <div class="form-group">
+                    <label for="confirmParentPassword">Confirm Password</label>
+                    <input type="password" id="confirmParentPassword" placeholder="Confirm your password" required>
+                </div>
+                <button type="submit" class="btn">Create Account</button>
+                <button type="button" class="btn btn-secondary" onclick="toggleAuthForm()">Back to Login</button>
+            </form>
+        </div>
+
+        <!-- Child Management Section -->
+        <div class="child-management" id="childManagement">
+            <div class="child-list">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                    <h2 style="color: #fff;">Managed Children</h2>
+                    <button class="btn btn-small" onclick="toggleAddChildForm()">+ Add Child</button>
+                </div>
+
+                <!-- Add Child Form -->
+                <div class="add-child-form" id="addChildForm">
+                    <h3 style="color: #00ff88; margin-bottom: 1rem;">Add New Child</h3>
+                    <form id="newChildForm">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="childName">Child's Name</label>
+                                <input type="text" id="childName" placeholder="Enter name" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="childAge">Age</label>
+                                <input type="number" id="childAge" placeholder="Age" min="1" max="18" required>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="childPhone">Phone Number</label>
+                            <input type="tel" id="childPhone" placeholder="+1 (555) 123-4567" required>
+                        </div>
+                        <button type="submit" class="btn btn-small">Add Child</button>
+                        <button type="button" class="btn btn-secondary btn-small" onclick="toggleAddChildForm()">Cancel</button>
+                    </form>
+                </div>
+
+                <!-- Child List -->
+                <div id="childList">
+                    <!-- Children will be added here dynamically -->
+                </div>
+            </div>
+        </div>
+
+        <!-- App Controls Section -->
+        <div class="app-controls" id="appControls">
+            <div class="controls-header">
+                <div>
+                    <h2 id="currentChildName">Managing: </h2>
+                    <p style="color: #888; margin-top: 0.5rem;" id="currentChildPhone"></p>
+                </div>
+                <button class="btn btn-small" onclick="backToChildList()">← Back to Children</button>
+            </div>
+
+            <div class="apps-grid" id="appsGrid">
+                <!-- Apps will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Top 20 apps data
+        const apps = [
+            { name: "YouTube", icon: "📺", category: "Video Streaming" },
+            { name: "TikTok", icon: "🎵", category: "Social Media" },
+            { name: "Instagram", icon: "📷", category: "Social Media" },
+            { name: "Facebook", icon: "👥", category: "Social Media" },
+            { name: "Snapchat", icon: "👻", category: "Social Media" },
+            { name: "WhatsApp", icon: "💬", category: "Messaging" },
+            { name: "Messenger", icon: "💭", category: "Messaging" },
+            { name: "Twitter/X", icon: "🐦", category: "Social Media" },
+            { name: "Discord", icon: "🎮", category: "Gaming/Social" },
+            { name: "Netflix", icon: "🎬", category: "Video Streaming" },
+            { name: "Spotify", icon: "🎧", category: "Music Streaming" },
+            { name: "Twitch", icon: "🟣", category: "Live Streaming" },
+            { name: "Reddit", icon: "🤖", category: "Social Media" },
+            { name: "Pinterest", icon: "📌", category: "Social Media" },
+            { name: "Roblox", icon: "🎮", category: "Gaming" },
+            { name: "Fortnite", icon: "🎯", category: "Gaming" },
+            { name: "Minecraft", icon: "⛏️", category: "Gaming" },
+            { name: "Telegram", icon: "✈️", category: "Messaging" },
+            { name: "Chrome", icon: "🌐", category: "Web Browser" },
+            { name: "Safari", icon: "🧭", category: "Web Browser" }
+        ];
+
+        let children = [];
+        let currentChild = null;
+        let appSettings = {};
+
+        // Initialize app settings for a child
+        function initializeAppSettings(childId) {
+            if (!appSettings[childId]) {
+                appSettings[childId] = {};
+                apps.forEach(app => {
+                    appSettings[childId][app.name] = true; // All apps allowed by default
+                });
+            }
+        }
+
+        // Toggle between login and create account forms
+        function toggleAuthForm() {
+            const loginForm = document.getElementById('loginForm');
+            const createAccountForm = document.getElementById('createAccountForm');
+            const authTitle = document.getElementById('authTitle');
+
+            if (loginForm.style.display === 'none') {
+                loginForm.style.display = 'block';
+                createAccountForm.style.display = 'none';
+                authTitle.textContent = 'Parent Login';
+            } else {
+                loginForm.style.display = 'none';
+                createAccountForm.style.display = 'block';
+                authTitle.textContent = 'Create Parent Account';
+            }
+        }
+
+        // Login form handler
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            const email = document.getElementById('parentEmail').value;
+            const password = document.getElementById('parentPassword').value;
+
+            // Get stored accounts
+            const accounts = JSON.parse(localStorage.getItem('parentAccounts') || '[]');
+            const account = accounts.find(acc => acc.email === email && acc.password === password);
+
+            if (account) {
+                // Successful login
+                document.getElementById('loginSection').classList.add('hidden');
+                document.getElementById('childManagement').classList.add('active');
+                loadDemoChildren();
+            } else {
+                // Failed login - for demo purposes, allow any login
+                showNotification('Login successful! (Demo mode)');
+                document.getElementById('loginSection').classList.add('hidden');
+                document.getElementById('childManagement').classList.add('active');
+                loadDemoChildren();
+            }
+        });
+
+        // Create account form handler
+        document.getElementById('createAccountForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            const name = document.getElementById('newParentName').value;
+            const email = document.getElementById('newParentEmail').value;
+            const password = document.getElementById('newParentPassword').value;
+            const confirmPassword = document.getElementById('confirmParentPassword').value;
+
+            // Validate passwords match
+            if (password !== confirmPassword) {
+                showNotification('Passwords do not match!');
+                return;
+            }
+
+            // Check if email already exists
+            const accounts = JSON.parse(localStorage.getItem('parentAccounts') || '[]');
+            if (accounts.some(acc => acc.email === email)) {
+                showNotification('Email already registered!');
+                return;
+            }
+
+            // Create new account
+            accounts.push({ name, email, password, createdAt: new Date().toISOString() });
+            localStorage.setItem('parentAccounts', JSON.stringify(accounts));
+
+            showNotification('Account created successfully!');
+
+            // Switch back to login form
+            setTimeout(() => {
+                toggleAuthForm();
+                // Pre-fill login email
+                document.getElementById('parentEmail').value = email;
+            }, 1500);
+        });
+
+        // Load demo children
+        function loadDemoChildren() {
+            children = [
+                { id: 1, name: "Sarah", age: 12, phone: "+1 (555) 123-4567" },
+                { id: 2, name: "Michael", age: 15, phone: "+1 (555) 987-6543" }
+            ];
+
+            children.forEach(child => initializeAppSettings(child.id));
+            renderChildList();
+        }
+
+        // Toggle add child form
+        function toggleAddChildForm() {
+            const form = document.getElementById('addChildForm');
+            form.classList.toggle('active');
+        }
+
+        // Add new child form handler
+        document.getElementById('newChildForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            const newChild = {
+                id: Date.now(),
+                name: document.getElementById('childName').value,
+                age: document.getElementById('childAge').value,
+                phone: document.getElementById('childPhone').value
+            };
+
+            children.push(newChild);
+            initializeAppSettings(newChild.id);
+            renderChildList();
+
+            // Reset form
+            this.reset();
+            toggleAddChildForm();
+        });
+
+        // Render child list
+        function renderChildList() {
+            const childList = document.getElementById('childList');
+            childList.innerHTML = '';
+
+            children.forEach(child => {
+                const childItem = document.createElement('div');
+                childItem.className = 'child-item';
+                childItem.innerHTML = `
+                    <div class="child-info">
+                        <span class="child-icon">👤</span>
+                        <div class="child-details">
+                            <h3>${child.name}</h3>
+                            <p>Age: ${child.age} • Phone: ${child.phone}</p>
+                        </div>
+                    </div>
+                    <button class="btn btn-small" onclick="manageChild(${child.id})">Manage Apps</button>
+                `;
+                childList.appendChild(childItem);
+            });
+        }
+
+        // Manage child apps
+        function manageChild(childId) {
+            currentChild = children.find(c => c.id === childId);
+            if (!currentChild) return;
+
+            document.getElementById('childManagement').classList.remove('active');
+            document.getElementById('appControls').classList.add('active');
+
+            document.getElementById('currentChildName').textContent = `Managing: ${currentChild.name}`;
+            document.getElementById('currentChildPhone').textContent = `Phone: ${currentChild.phone}`;
+
+            renderApps();
+        }
+
+        // Back to child list
+        function backToChildList() {
+            document.getElementById('appControls').classList.remove('active');
+            document.getElementById('childManagement').classList.add('active');
+            currentChild = null;
+        }
+
+        // Render apps grid
+        function renderApps() {
+            const appsGrid = document.getElementById('appsGrid');
+            appsGrid.innerHTML = '';
+
+            apps.forEach((app, index) => {
+                const isAllowed = appSettings[currentChild.id][app.name];
+
+                const appCard = document.createElement('div');
+                appCard.className = `app-card ${!isAllowed ? 'blocked' : ''}`;
+                appCard.innerHTML = `
+                    <div class="app-header">
+                        <span class="app-icon">${app.icon}</span>
+                        <div class="app-info">
+                            <h3>${app.name}</h3>
+                            <p class="app-category">${app.category}</p>
+                        </div>
+                    </div>
+                    <div class="app-toggle">
+                        <span class="toggle-label">${isAllowed ? 'Allowed' : 'Blocked'}</span>
+                        <label class="switch">
+                            <input type="checkbox" ${isAllowed ? 'checked' : ''}
+                                   onchange="toggleApp('${app.name}', this.checked)">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                `;
+                appsGrid.appendChild(appCard);
+            });
+        }
+
+        // Toggle app access
+        function toggleApp(appName, isAllowed) {
+            if (currentChild) {
+                appSettings[currentChild.id][appName] = isAllowed;
+                renderApps();
+
+                // Show notification
+                showNotification(`${appName} ${isAllowed ? 'allowed' : 'blocked'} for ${currentChild.name}`);
+            }
+        }
+
+        // Show notification
+        function showNotification(message) {
+            // Create simple notification
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 100px;
+                right: 20px;
+                background: linear-gradient(45deg, #00ff88, #00aaff);
+                color: #000;
+                padding: 1rem 2rem;
+                border-radius: 10px;
+                font-weight: 600;
+                z-index: 10000;
+                animation: slideIn 0.3s ease;
+            `;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                notification.style.animation = 'slideOut 0.3s ease';
+                setTimeout(() => notification.remove(), 300);
+            }, 3000);
+        }
+    </script>
+
+    <style>
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes slideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+        }
+    </style>
+</body>
+</html>

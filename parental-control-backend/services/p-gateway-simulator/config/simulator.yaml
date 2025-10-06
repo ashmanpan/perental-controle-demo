@@ -1,0 +1,107 @@
+simulation:
+  # Number of new sessions to create per second
+  sessions_per_second: 10
+
+  # Session duration range in seconds
+  session_duration_min: 300    # 5 minutes
+  session_duration_max: 7200   # 2 hours
+
+  # Probability of session ending early
+  early_termination_probability: 0.05
+
+  # Probability of IP change during session
+  ip_change_probability: 0.02
+
+  # Number of pre-configured test users
+  test_users_count: 50
+
+imsi_pool:
+  # IMSI format: MCC(3) + MNC(2-3) + MSIN(9-10)
+  # 310 = USA, 150 = AT&T
+  prefix: "310150"
+  range_start: 100000000
+  range_end: 199999999
+
+phone_pool:
+  # US phone numbers
+  country_code: "+1"
+  area_codes:
+    - "555"  # Traditional fake number
+    - "206"  # Seattle
+    - "415"  # San Francisco
+    - "917"  # New York
+
+ip_pool:
+  # Private IP range for UE (User Equipment)
+  private_subnet: "10.20.0.0/16"
+  private_start: "10.20.0.1"
+  private_end: "10.20.255.254"
+
+  # Public IP range (NAT)
+  public_subnet: "203.0.113.0/24"
+  public_start: "203.0.113.1"
+  public_end: "203.0.113.254"
+
+# 5G specific settings
+five_g:
+  # Access Point Name
+  apn: "internet"
+
+  # Radio Access Technology
+  rat_type: "NR"  # New Radio (5G)
+
+  # Network slicing
+  slices:
+    - slice_id: "SST1-SD000001"
+      slice_type: "eMBB"  # Enhanced Mobile Broadband
+    - slice_id: "SST2-SD000001"
+      slice_type: "URLLC"  # Ultra-Reliable Low Latency
+
+  # QoS profiles
+  qos_profiles:
+    - qci: 9
+      priority: 8
+      description: "Default bearer"
+    - qci: 5
+      priority: 5
+      description: "IMS signaling"
+
+kafka:
+  # Kafka topic for session events
+  topic: "session-data"
+
+  # Topic for blocked request analytics
+  analytics_topic: "blocked-requests"
+
+  # Bootstrap servers (overridden by env var)
+  bootstrap_servers: "localhost:9092"
+
+  # Producer settings
+  batch_size: 100
+  linger_ms: 10
+  compression_type: "gzip"
+  acks: "all"
+  retries: 3
+
+  # Security (if using AWS MSK with IAM)
+  security_protocol: "PLAINTEXT"  # Change to SASL_SSL for AWS MSK
+  sasl_mechanism: "AWS_MSK_IAM"
+
+logging:
+  level: "INFO"
+  format: "json"
+
+monitoring:
+  # Publish metrics to CloudWatch
+  enable_cloudwatch: true
+  cloudwatch_namespace: "ParentalControl/PGateway"
+  metrics_interval: 60  # seconds
+
+  # Metrics to track
+  metrics:
+    - sessions_active
+    - sessions_created_total
+    - sessions_terminated_total
+    - ip_changes_total
+    - kafka_publish_success
+    - kafka_publish_failures
