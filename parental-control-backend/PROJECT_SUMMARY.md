@@ -76,11 +76,11 @@ parental-control-backend/
 │       └── firewall_rule.py        # FTD rule models
 │
 ├── infrastructure/                 ✅ COMPLETED
-│   └── terraform/
-│       ├── main.tf                 # Provider + backend
-│       ├── variables.tf            # All variables
-│       ├── vpc.tf                  # VPC, subnets, NAT
-│       └── dynamodb.tf             # 5 DynamoDB tables
+│   └── cloudformation/
+│       ├── main.yaml                 # Provider + backend
+│       ├── variables.yaml            # All variables
+│       ├── vpc.yaml                  # VPC, subnets, NAT
+│       └── dynamodb.yaml             # 5 DynamoDB tables
 │
 ├── deployment/                     ✅ COMPLETED
 │   └── docker/
@@ -167,8 +167,8 @@ Complete Python data models for:
 
 ---
 
-### 5. AWS Infrastructure (Terraform) ✅
-Complete Terraform configuration for:
+### 5. AWS Infrastructure (cloudformation) ✅
+Complete cloudformation configuration for:
 
 **Network**:
 - VPC with public/private subnets (3 AZs)
@@ -268,8 +268,8 @@ docker-compose up -d
 
 ### Option 2: AWS Production (Mumbai Region)
 ```bash
-cd infrastructure/terraform
-terraform apply -var-file=prod.tfvars
+cd infrastructure/cloudformation
+cloudformation apply -var-file=prod.yamlvars
 ```
 
 **Use Case**: Production deployment
@@ -393,7 +393,7 @@ terraform apply -var-file=prod.tfvars
 | **Monitoring** | CloudWatch | AWS-native monitoring |
 | **Firewall** | Cisco FTD | Enterprise-grade security |
 | **Language** | Python 3.11 | Easy integration, AWS SDK |
-| **IaC** | Terraform | Version-controlled infrastructure |
+| **IaC** | cloudformation | Version-controlled infrastructure |
 
 ---
 
@@ -404,7 +404,7 @@ terraform apply -var-file=prod.tfvars
 - [x] Kafka Subscriber
 - [x] DynamoDB Schema
 - [x] Data Models
-- [x] Terraform Infrastructure
+- [x] cloudformation Infrastructure
 - [x] Docker Compose
 
 ### Phase 2: Policy Enforcement (In Progress)
@@ -492,7 +492,7 @@ This project provides a **complete, production-ready backend** for Cisco AI-Powe
 
 **Total Development Time**: Comprehensive architecture and core services completed.
 **Lines of Code**: ~3,000+ (Python)
-**Infrastructure**: Fully automated with Terraform
+**Infrastructure**: Fully automated with cloudformation
 **Documentation**: Complete with architecture, deployment, and schema docs
 
 🚀 **Ready to deploy and scale!**

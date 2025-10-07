@@ -279,22 +279,6 @@ aws cloudformation describe-stack-resource \
   --region ap-south-1
 ```
 
-## Migration from Terraform
-
-If you previously deployed with Terraform:
-
-1. **Do NOT run both** - Choose CloudFormation OR Terraform, not both
-2. **Destroy Terraform resources first**:
-   ```bash
-   cd ../terraform
-   terraform destroy -auto-approve
-   ```
-3. **Then deploy with CloudFormation**:
-   ```bash
-   cd ../cloudformation
-   aws cloudformation create-stack ...
-   ```
-
 ## Best Practices
 
 1. **Use Change Sets** - Preview changes before applying

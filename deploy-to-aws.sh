@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #########################################
-# Full AWS Deployment Script
+# Full AWS Deployment Script (CloudFormation)
 # Cisco AI Family Safety - Parental Control
 #########################################
 
@@ -13,6 +13,12 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
+
+# Configuration
+STACK_NAME="parental-control-prod"
+TEMPLATE_FILE="parental-control-backend/infrastructure/cloudformation/infrastructure.yaml"
+PARAMETERS_FILE="parental-control-backend/infrastructure/cloudformation/parameters.json"
+REGION="ap-south-1"
 
 # Functions
 print_header() {
@@ -55,48 +61,40 @@ check_prerequisites() {
     fi
     print_success "Docker installed"
 
-    # Check Terraform
-    if ! command -v terraform &> /dev/null; then
-        print_warning "Terraform not installed. Installing..."
-        install_terraform
-    else
-        print_success "Terraform installed"
-    fi
-
     # Check AWS credentials
     if ! aws sts get-caller-identity &> /dev/null; then
         print_error "AWS credentials not configured"
         exit 1
     fi
     ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-    REGION=$(aws configure get region)
     print_success "AWS credentials configured (Account: $ACCOUNT_ID, Region: $REGION)"
 }
 
-# Install Terraform
-install_terraform() {
-    print_info "Installing Terraform..."
-    cd /tmp
-    wget -q https://releases.hashicorp.com/terraform/1.6.6/terraform_1.6.6_linux_amd64.zip
-    unzip -q terraform_1.6.6_linux_amd64.zip
-    sudo mv terraform /usr/local/bin/
-    rm terraform_1.6.6_linux_amd64.zip
-    print_success "Terraform installed: $(terraform version -json | jq -r .terraform_version)"
+# Validate CloudFormation template
+validate_template() {
+    print_header "Validating CloudFormation Template"
+
+    print_info "Validating template syntax..."
+    aws cloudformation validate-template \
+        --template-body file://$TEMPLATE_FILE \
+        --region $REGION \
+        --no-cli-pager > /dev/null
+
+    print_success "Template validation successful"
 }
 
 # Deploy infrastructure
 deploy_infrastructure() {
-    print_header "Deploying Infrastructure with Terraform"
+    print_header "Deploying Infrastructure with CloudFormation"
 
-    cd parental-control-backend/infrastructure/terraform
-
-    # Initialize
-    print_info "Initializing Terraform..."
-    terraform init
-
-    # Plan
-    print_info "Planning infrastructure..."
-    terraform plan -out=tfplan
+    # Check if stack exists
+    if aws cloudformation describe-stacks --stack-name $STACK_NAME --region $REGION &> /dev/null; then
+        print_info "Stack exists. Updating stack..."
+        OPERATION="update"
+    else
+        print_info "Stack does not exist. Creating new stack..."
+        OPERATION="create"
+    fi
 
     # Confirm
     echo ""
@@ -107,29 +105,67 @@ deploy_infrastructure() {
         exit 0
     fi
 
-    # Apply
-    print_info "Deploying infrastructure (this will take 45-60 minutes)..."
-    terraform apply tfplan
+    # Deploy
+    if [ "$OPERATION" == "create" ]; then
+        print_info "Creating CloudFormation stack (this will take 45-60 minutes)..."
+        aws cloudformation create-stack \
+            --stack-name $STACK_NAME \
+            --template-body file://$TEMPLATE_FILE \
+            --parameters file://$PARAMETERS_FILE \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --region $REGION \
+            --no-cli-pager
 
-    # Save outputs
-    terraform output > deployment-outputs.txt
+        print_info "Waiting for stack creation to complete..."
+        aws cloudformation wait stack-create-complete \
+            --stack-name $STACK_NAME \
+            --region $REGION
+    else
+        print_info "Updating CloudFormation stack..."
+        aws cloudformation update-stack \
+            --stack-name $STACK_NAME \
+            --template-body file://$TEMPLATE_FILE \
+            --parameters file://$PARAMETERS_FILE \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --region $REGION \
+            --no-cli-pager || true
+
+        print_info "Waiting for stack update to complete..."
+        aws cloudformation wait stack-update-complete \
+            --stack-name $STACK_NAME \
+            --region $REGION || true
+    fi
+
+    # Get outputs
+    print_info "Retrieving stack outputs..."
+    aws cloudformation describe-stacks \
+        --stack-name $STACK_NAME \
+        --region $REGION \
+        --query 'Stacks[0].Outputs' \
+        --output table > deployment-outputs.txt
+
     print_success "Infrastructure deployed! Outputs saved to deployment-outputs.txt"
+}
 
-    cd ../../..
+# Get stack outputs
+get_output() {
+    aws cloudformation describe-stacks \
+        --stack-name $STACK_NAME \
+        --region $REGION \
+        --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" \
+        --output text
 }
 
 # Build and push Docker images
 build_and_push_images() {
     print_header "Building and Pushing Docker Images"
 
-    # Get ECR URLs from Terraform
-    cd parental-control-backend/infrastructure/terraform
-    ECR_P_GATEWAY=$(terraform output -raw ecr_p_gateway_url)
-    ECR_KAFKA=$(terraform output -raw ecr_kafka_subscriber_url)
-    ECR_ENFORCER=$(terraform output -raw ecr_policy_enforcer_url)
-    ECR_FTD=$(terraform output -raw ecr_ftd_integration_url)
-    ECR_ANALYTICS=$(terraform output -raw ecr_analytics_dashboard_url)
-    cd ../../..
+    # Get ECR URLs from CloudFormation outputs
+    ECR_P_GATEWAY=$(get_output "PGatewayECRUrl")
+    ECR_KAFKA=$(get_output "KafkaSubscriberECRUrl")
+    ECR_ENFORCER=$(get_output "PolicyEnforcerECRUrl")
+    ECR_FTD=$(get_output "FTDIntegrationECRUrl")
+    ECR_ANALYTICS=$(get_output "AnalyticsDashboardECRUrl")
 
     # Login to ECR
     print_info "Logging into ECR..."
@@ -137,10 +173,16 @@ build_and_push_images() {
     print_success "Logged into ECR"
 
     # Build and push each service
-    services=("p-gateway-simulator:$ECR_P_GATEWAY" "kafka-subscriber:$ECR_KAFKA" "policy-enforcer:$ECR_ENFORCER" "ftd-integration:$ECR_FTD" "analytics-dashboard:$ECR_ANALYTICS")
+    declare -A services=(
+        ["p-gateway-simulator"]="$ECR_P_GATEWAY"
+        ["kafka-subscriber"]="$ECR_KAFKA"
+        ["policy-enforcer"]="$ECR_ENFORCER"
+        ["ftd-integration"]="$ECR_FTD"
+        ["analytics-dashboard"]="$ECR_ANALYTICS"
+    )
 
-    for service_pair in "${services[@]}"; do
-        IFS=':' read -r service ecr_url <<< "$service_pair"
+    for service in "${!services[@]}"; do
+        ecr_url="${services[$service]}"
 
         print_info "Building $service..."
         cd parental-control-backend/services/$service
@@ -158,7 +200,7 @@ build_and_push_images() {
 update_ecs_services() {
     print_header "Updating ECS Services"
 
-    CLUSTER_NAME="pc-prod-cluster"
+    CLUSTER_NAME=$(get_output "ECSClusterName")
 
     services=("p-gateway" "kafka-subscriber" "policy-enforcer" "ftd-integration" "analytics-dashboard")
 
@@ -220,9 +262,10 @@ deploy_frontend() {
 verify_deployment() {
     print_header "Verifying Deployment"
 
+    CLUSTER_NAME=$(get_output "ECSClusterName")
+
     # Check ECS services
     print_info "Checking ECS services..."
-    CLUSTER_NAME="pc-prod-cluster"
     aws ecs describe-services \
         --cluster $CLUSTER_NAME \
         --services pc-prod-p-gateway-service \
@@ -243,7 +286,7 @@ verify_deployment() {
 
     # Check DynamoDB
     print_info "Checking DynamoDB tables..."
-    aws dynamodb list-tables --region $REGION --query 'TableNames[?contains(@, `Parental`) == `true`]' --output table
+    aws dynamodb list-tables --region $REGION --query 'TableNames[?contains(@, `pc-prod`) == `true`]' --output table
 
     print_success "Deployment verification complete!"
 }
@@ -251,8 +294,6 @@ verify_deployment() {
 # Print summary
 print_summary() {
     print_header "Deployment Summary"
-
-    cd parental-control-backend/infrastructure/terraform
 
     echo ""
     echo -e "${GREEN}🎉 Deployment Successful!${NC}"
@@ -269,15 +310,16 @@ print_summary() {
     echo "📝 Important Information:"
     echo "   - Account ID: $ACCOUNT_ID"
     echo "   - Region: $REGION"
-    echo "   - ECS Cluster: pc-prod-cluster"
+    echo "   - Stack Name: $STACK_NAME"
+    echo "   - ECS Cluster: $(get_output 'ECSClusterName')"
     echo ""
     echo "💰 Estimated Monthly Cost: ~₹1,13,000 (~\$1,350)"
     echo ""
     echo "📖 Next Steps:"
     echo "   1. Deploy Cisco FTD from AWS Marketplace"
     echo "   2. Configure FTD with management IP"
-    echo "   3. Update terraform.tfvars with FTD details"
-    echo "   4. Run: terraform apply -auto-approve"
+    echo "   3. Update parameters.json with FTD details"
+    echo "   4. Redeploy: ./deploy-to-aws-cloudformation.sh"
     echo "   5. Add test policies to DynamoDB"
     echo "   6. Monitor CloudWatch logs"
     echo ""
@@ -287,22 +329,24 @@ print_summary() {
     echo "   - Architecture: parental-control-backend/docs/ARCHITECTURE.md"
     echo ""
     echo "🔗 Useful Commands:"
-    echo "   - View logs: aws logs tail /ecs/pc-prod/p-gateway --follow"
-    echo "   - List services: aws ecs list-services --cluster pc-prod-cluster"
-    echo "   - Check costs: aws ce get-cost-and-usage --time-period Start=2025-10-01,End=2025-10-08 --granularity DAILY --metrics BlendedCost"
+    echo "   - View logs: aws logs tail /ecs/pc-prod/p-gateway --follow --region $REGION"
+    echo "   - List services: aws ecs list-services --cluster $(get_output 'ECSClusterName') --region $REGION"
+    echo "   - Stack status: aws cloudformation describe-stacks --stack-name $STACK_NAME --region $REGION"
+    echo "   - Delete stack: aws cloudformation delete-stack --stack-name $STACK_NAME --region $REGION"
     echo ""
-
-    cd ../../..
 }
 
 # Main execution
 main() {
-    print_header "Cisco AI Family Safety - Full AWS Deployment"
+    print_header "Cisco AI Family Safety - Full AWS Deployment (CloudFormation)"
     echo ""
     print_info "Starting deployment process..."
     echo ""
 
     check_prerequisites
+    echo ""
+
+    validate_template
     echo ""
 
     deploy_infrastructure

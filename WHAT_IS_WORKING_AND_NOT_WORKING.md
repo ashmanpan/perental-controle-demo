@@ -11,8 +11,8 @@
 - **Status**: Fully operational
 - **URL**: https://github.com/ashmanpan/perental-controle-demo
 - **Contents**:
-  - ✅ Complete source code (57 files)
-  - ✅ Terraform infrastructure code (11 .tf files)
+  - ✅ Complete source code
+  - ✅ CloudFormation infrastructure template
   - ✅ Docker Compose configuration
   - ✅ All 5 microservices code
   - ✅ Frontend HTML/CSS/JavaScript
@@ -24,8 +24,6 @@
 - **User**: foramplify-v2-personal
 - **Region**: ap-south-1 (Mumbai)
 - **AWS CLI**: ✅ Working
-- **S3 State Bucket**: ✅ Created (`parental-control-terraform-state-mumbai`)
-- **DynamoDB Lock Table**: ✅ Created (`terraform-state-lock`)
 
 ### 3. **Docker Desktop** ✅
 - **Status**: Running in WSL 2
@@ -63,9 +61,9 @@
   - ✅ Fully responsive design
 - **How to Access**: Open the HTML file in any browser
 
-### 6. **Terraform Configuration** ✅
+### 6. **CloudFormation Templates** ✅
 - **Status**: Complete and ready to deploy
-- **Files**: 11 Terraform files
+- **Template**: infrastructure.yaml (2,100+ lines)
 - **Resources Defined**:
   - ✅ VPC with 3 AZs (6 subnets)
   - ✅ Amazon MSK (Kafka) cluster
@@ -117,31 +115,10 @@ E: Unable to locate package librdkafka1
 - Infrastructure services (Kafka, Redis, DynamoDB) work because they use **pre-built images**
 - Custom services need to **build from source** (requires package downloads)
 
-### 2. **Terraform Not Installed** ❌
-**Status**: Not installed (needs sudo)
+### 2. **AWS Deployment Not Started** ❌
+**Status**: Infrastructure template ready, but not deployed
 
 **Why**:
-- Terraform binary not in `/usr/local/bin/`
-- Installation requires `sudo` permissions
-- User hasn't installed it yet
-
-**Impact**:
-- Cannot run `terraform init`
-- Cannot deploy infrastructure to AWS
-- Automated deployment script won't work
-
-**Solution**:
-```bash
-wget https://releases.hashicorp.com/terraform/1.6.6/terraform_1.6.6_linux_amd64.zip
-unzip terraform_1.6.6_linux_amd64.zip
-sudo mv terraform /usr/local/bin/
-```
-
-### 3. **AWS Deployment Not Started** ❌
-**Status**: Infrastructure code ready, but not deployed
-
-**Why**:
-- Terraform not installed
 - User chose to test locally first
 - No resources deployed to AWS yet
 
@@ -149,6 +126,7 @@ sudo mv terraform /usr/local/bin/
 - No AWS costs yet ($0 spent) ✅
 - Cannot test full end-to-end flow
 - Services only running locally (infrastructure only)
+
 
 ---
 
@@ -172,16 +150,11 @@ python src/generator.py
 **Skip local testing**, deploy to AWS where network is not restricted:
 
 ```bash
-# Install Terraform
-wget https://releases.hashicorp.com/terraform/1.6.6/terraform_1.6.6_linux_amd64.zip
-unzip terraform_1.6.6_linux_amd64.zip
-sudo mv terraform /usr/local/bin/
-
-# Deploy to AWS
+# Deploy to AWS using CloudFormation
 ./deploy-to-aws.sh
 ```
 
-**Status**: Ready to execute (requires Terraform installation)
+**Status**: Ready to execute (no installation required)
 
 ### Workaround 3: Use Corporate Proxy (If Available)
 **If Cisco provides a proxy**, configure Docker to use it:
@@ -217,10 +190,10 @@ sudo mv terraform /usr/local/bin/
 3. ✅ **Review Code**
    - All source code available
    - Complete documentation
-   - Terraform infrastructure code
+   - CloudFormation infrastructure template
 
-4. ✅ **Deploy to AWS** (once Terraform installed)
-   - All infrastructure code ready
+4. ✅ **Deploy to AWS**
+   - All infrastructure templates ready
    - Automated deployment script ready
    - Will bypass network issues
 
@@ -252,9 +225,8 @@ sudo mv terraform /usr/local/bin/
 - ✅ All services will work
 
 **Steps**:
-1. Install Terraform (5 minutes)
-2. Run `./deploy-to-aws.sh` (2-3 hours)
-3. Test full system
+1. Run `./deploy-to-aws.sh` (2-3 hours)
+2. Test full system
 
 **Cost**: ~₹1,13,000/month (~$1,350 USD)
 
@@ -291,7 +263,7 @@ sudo mv terraform /usr/local/bin/
 |-----------|--------|-------|
 | **GitHub Repo** | ✅ 100% | All code pushed |
 | **AWS Account** | ✅ Ready | Credentials configured |
-| **Terraform Code** | ✅ 100% | Ready to deploy |
+| **CloudFormation Templates** | ✅ 100% | Ready to deploy |
 | **Documentation** | ✅ 100% | Complete |
 | **Frontend** | ✅ 100% | Working locally |
 | **Local Infrastructure** | ✅ 70% | Kafka, Redis, DynamoDB running |
@@ -314,7 +286,6 @@ sudo mv terraform /usr/local/bin/
 ### What Doesn't Work:
 - ❌ Custom microservices won't build (network restrictions)
 - ❌ Cannot test full system locally
-- ❌ Terraform not installed
 
 ### Best Path Forward:
 **Deploy to AWS** - This will bypass all local network issues and let you test the complete system in production.

@@ -24,16 +24,10 @@ parental-control-demo/
 │   │   └── analytics-dashboard/    # Parent analytics API
 │   │
 │   ├── infrastructure/             # Infrastructure as Code
-│   │   └── terraform/              # Complete Terraform config
-│   │       ├── main.tf
-│   │       ├── vpc.tf
-│   │       ├── msk.tf             # Amazon MSK (Kafka)
-│   │       ├── redis.tf           # ElastiCache
-│   │       ├── dynamodb.tf        # 5 DynamoDB tables
-│   │       ├── sqs.tf             # SQS queues
-│   │       ├── ecr.tf             # Docker registries
-│   │       ├── ecs.tf             # ECS Fargate
-│   │       └── outputs.tf
+│   │   └── cloudformation/         # AWS CloudFormation templates
+│   │       ├── infrastructure.yaml # Complete infrastructure template
+│   │       ├── parameters.json     # Configuration parameters
+│   │       └── README.md           # CloudFormation guide
 │   │
 │   ├── deployment/                 # Deployment configs
 │   │   └── docker/
@@ -84,7 +78,7 @@ parental-control-demo/
 - CloudWatch for monitoring
 
 ### ✅ **Production Ready**
-- Infrastructure as Code (Terraform)
+- Infrastructure as Code (AWS CloudFormation)
 - Docker containerization
 - Auto-scaling and high availability
 - Security best practices
@@ -117,23 +111,13 @@ python src/consumer.py
 
 ### **Option 2: Full AWS Deployment**
 
-**CloudFormation (Recommended)**:
 ```bash
 # Automated deployment (2-3 hours)
 cd parental-control-demo
-./deploy-to-aws-cloudformation.sh
-
-# Or manual CloudFormation deployment
-# See DEPLOYMENT_GUIDE.md for detailed instructions
-```
-
-**Terraform (Alternative)**:
-```bash
-# Requires Terraform installation
-cd parental-control-demo
 ./deploy-to-aws.sh
 
-# See DEPLOYMENT_GUIDE.md for Terraform instructions
+# Or manual step-by-step deployment
+# See DEPLOYMENT_GUIDE.md for detailed instructions
 ```
 
 ---
@@ -207,7 +191,7 @@ See [DESIGN.md](DESIGN.md) for complete architecture details.
 | **Compute** | AWS ECS Fargate |
 | **Networking** | AWS VPC, NAT Gateway, Security Groups |
 | **Firewall** | Cisco FTDv (Firepower Threat Defense) |
-| **IaC** | AWS CloudFormation (recommended) or Terraform 1.6+ |
+| **IaC** | AWS CloudFormation |
 | **CI/CD** | Docker, AWS CLI, Amplify CLI |
 
 ---
@@ -257,7 +241,7 @@ Parent views dashboard → Shows "47 TikTok blocks today" → Demonstrates ROI �
 | Phase | Status | Time |
 |-------|--------|------|
 | Infrastructure Design | ✅ Complete | - |
-| Terraform Configuration | ✅ Complete | - |
+| CloudFormation Templates | ✅ Complete | - |
 | Microservices Code | ✅ Complete | - |
 | Docker Images | ✅ Ready | - |
 | Documentation | ✅ Complete | - |
@@ -272,7 +256,7 @@ Parent views dashboard → Shows "47 TikTok blocks today" → Demonstrates ROI �
 ```bash
 ./deploy-to-aws.sh
 ```
-- Installs Terraform
+- Validates CloudFormation template
 - Deploys all infrastructure
 - Builds and pushes Docker images
 - Updates ECS services
@@ -294,9 +278,9 @@ docker-compose up -d
 
 ## 🎓 What You Get
 
-### **57 Production-Ready Files**
+### **Production-Ready Files**
 - ✅ 5 microservices with Dockerfiles
-- ✅ Complete Terraform infrastructure (11 .tf files)
+- ✅ Complete CloudFormation infrastructure template
 - ✅ Docker Compose for local dev
 - ✅ Automated deployment script
 - ✅ Parent web dashboard
@@ -338,8 +322,9 @@ aws ce get-cost-and-usage --time-period Start=2025-10-01,End=2025-10-08 \
   --granularity DAILY --metrics BlendedCost --region ap-south-1
 
 # Destroy everything
-cd parental-control-backend/infrastructure/terraform
-terraform destroy -auto-approve
+aws cloudformation delete-stack \
+  --stack-name parental-control-prod \
+  --region ap-south-1
 ```
 
 ---
@@ -354,9 +339,8 @@ Proprietary - Cisco Systems, Inc.
 
 This is a **complete, production-ready system** for Cisco AI Family Safety Parental Control:
 
-✅ **57 files** of production code
-✅ **5 microservices** fully implemented
-✅ **Complete AWS infrastructure** (Terraform)
+✅ **Production code** - 5 microservices fully implemented
+✅ **Complete AWS infrastructure** (CloudFormation)
 ✅ **Comprehensive documentation** (100+ pages)
 ✅ **Ready to deploy** in 2-3 hours
 

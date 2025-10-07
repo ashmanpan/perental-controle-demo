@@ -77,18 +77,18 @@ parental-control-backend/
 │       └── common.yaml
 │
 ├── infrastructure/                # Infrastructure as Code
-│   ├── terraform/
-│   │   ├── main.tf
-│   │   ├── vpc.tf
-│   │   ├── msk.tf                # Kafka cluster
-│   │   ├── redis.tf              # ElastiCache
-│   │   ├── dynamodb.tf           # DynamoDB tables
-│   │   ├── ecs.tf                # ECS services
-│   │   ├── lambda.tf             # Lambda functions
-│   │   ├── iam.tf                # IAM roles
-│   │   ├── security_groups.tf
-│   │   ├── cloudwatch.tf
-│   │   └── variables.tf
+│   ├── cloudformation/
+│   │   ├── main.yaml
+│   │   ├── vpc.yaml
+│   │   ├── msk.yaml                # Kafka cluster
+│   │   ├── redis.yaml              # ElastiCache
+│   │   ├── dynamodb.yaml           # DynamoDB tables
+│   │   ├── ecs.yaml                # ECS services
+│   │   ├── lambda.yaml             # Lambda functions
+│   │   ├── iam.yaml                # IAM roles
+│   │   ├── security_groups.yaml
+│   │   ├── cloudwatch.yaml
+│   │   └── variables.yaml
 │   │
 │   └── cloudformation/
 │       ├── master-stack.yaml
@@ -137,7 +137,7 @@ parental-control-backend/
 
 - AWS Account with appropriate permissions
 - Docker & Docker Compose
-- Terraform >= 1.5.0
+- AWS CLI configured
 - Python 3.11+
 - AWS CLI configured
 - Cisco FTD/FMC access credentials
@@ -190,12 +190,12 @@ parental-control-backend/
 
 2. **Plan infrastructure**
    ```bash
-   terraform plan -var-file=../../config/dev.tfvars
+   terraform plan -var-file=../../config/dev.yamlvars
    ```
 
 3. **Apply infrastructure**
    ```bash
-   terraform apply -var-file=../../config/dev.tfvars
+   terraform apply -var-file=../../config/dev.yamlvars
    ```
 
 4. **Deploy services**

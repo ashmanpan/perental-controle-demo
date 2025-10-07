@@ -15,7 +15,7 @@
 - Docker & Docker Compose (>= v2.0)
 - Python 3.11+
 - AWS CLI
-- Terraform >= 1.5.0
+- cloudformation >= 1.5.0
 
 ### Step 1: Start Local Services
 
@@ -105,33 +105,33 @@ aws configure
 # Use Mumbai region: ap-south-1
 ```
 
-### Step 2: Create S3 Bucket for Terraform State
+### Step 2: Create S3 Bucket for cloudformation State
 
 ```bash
-aws s3 mb s3://parental-control-terraform-state-mumbai --region ap-south-1
+aws s3 mb s3://parental-control-cloudformation-state-mumbai --region ap-south-1
 aws s3api put-bucket-versioning \
-    --bucket parental-control-terraform-state-mumbai \
+    --bucket parental-control-cloudformation-state-mumbai \
     --versioning-configuration Status=Enabled
 
 # Create DynamoDB table for state locking
 aws dynamodb create-table \
-    --table-name terraform-state-lock \
+    --table-name cloudformation-state-lock \
     --attribute-definitions AttributeName=LockID,AttributeType=S \
     --key-schema AttributeName=LockID,KeyType=HASH \
     --billing-mode PAY_PER_REQUEST \
     --region ap-south-1
 ```
 
-### Step 3: Initialize Terraform
+### Step 3: Initialize cloudformation
 
 ```bash
-cd infrastructure/terraform
-terraform init
+cd infrastructure/cloudformation
+cloudformation init
 ```
 
 ### Step 4: Create Variables File
 
-Create `terraform.tfvars`:
+Create `cloudformation.yamlvars`:
 
 ```hcl
 aws_region   = "ap-south-1"
@@ -167,13 +167,13 @@ ecs_max_capacity   = 10
 ### Step 5: Plan Infrastructure
 
 ```bash
-terraform plan -var-file=terraform.tfvars
+cloudformation plan -var-file=cloudformation.yamlvars
 ```
 
 ### Step 6: Deploy Infrastructure
 
 ```bash
-terraform apply -var-file=terraform.tfvars
+cloudformation apply -var-file=cloudformation.yamlvars
 ```
 
 This will create:
@@ -413,19 +413,19 @@ aws secretsmanager get-secret-value \
 
 ## Rollback Procedure
 
-### Terraform Rollback
+### cloudformation Rollback
 
 ```bash
-cd infrastructure/terraform
+cd infrastructure/cloudformation
 
 # View previous state versions
-terraform state list
+cloudformation state list
 
 # Rollback to previous version
-terraform apply -var-file=terraform.tfvars -target=<resource>
+cloudformation apply -var-file=cloudformation.yamlvars -target=<resource>
 
 # Or full rollback
-terraform destroy -var-file=terraform.tfvars
+cloudformation destroy -var-file=cloudformation.yamlvars
 ```
 
 ### ECS Service Rollback

@@ -17,7 +17,7 @@
 4. ✅ Create P-Gateway simulator service
 5. ✅ Create Kafka subscriber service
 6. ✅ Create DynamoDB schema and Redis data models
-7. ✅ Create AWS infrastructure configuration (Terraform)
+7. ✅ Create AWS infrastructure configuration (cloudformation)
 8. ✅ Create Docker configurations and deployment scripts
 9. ✅ Create policy enforcement microservice
 10. ✅ Create Cisco FTD integration module
@@ -207,13 +207,13 @@
 
 ## 🏗️ Infrastructure
 
-### Terraform Configuration ✅
-**Location**: `infrastructure/terraform/`
+### cloudformation Configuration ✅
+**Location**: `infrastructure/cloudformation/`
 **Files**: 4 files
-- ✅ `main.tf` - Provider and backend configuration
-- ✅ `variables.tf` - All configurable parameters
-- ✅ `vpc.tf` - VPC, subnets, NAT gateways
-- ✅ `dynamodb.tf` - 5 DynamoDB tables
+- ✅ `main.yaml` - Provider and backend configuration
+- ✅ `variables.yaml` - All configurable parameters
+- ✅ `vpc.yaml` - VPC, subnets, NAT gateways
+- ✅ `dynamodb.yaml` - 5 DynamoDB tables
 
 **AWS Resources**:
 - VPC with 3 AZs (Mumbai region: ap-south-1)
@@ -327,15 +327,15 @@ aws configure
 # Region: ap-south-1 (Mumbai)
 
 # 2. Deploy infrastructure
-cd infrastructure/terraform
-terraform init
-terraform apply
+cd infrastructure/cloudformation
+cloudformation init
+cloudformation apply
 
 # 3. Build and push Docker images
 # (Scripts to be created)
 
 # 4. Deploy services to ECS
-# (Terraform ECS configuration to be added)
+# (cloudformation ECS configuration to be added)
 ```
 
 ---
@@ -454,7 +454,7 @@ terraform apply
 | **Monitoring** | CloudWatch | AWS-native observability |
 | **Firewall** | Cisco FTD | Enterprise security |
 | **Language** | Python 3.11 | Rapid development, AWS SDK |
-| **IaC** | Terraform | Version-controlled infra |
+| **IaC** | cloudformation | Version-controlled infra |
 | **API** | Flask + Gunicorn | Production-ready REST APIs |
 
 ---
@@ -470,7 +470,7 @@ parental-control-backend/  (53 files)
 │   ├── ftd-integration/            (8 files) ✅
 │   └── analytics-dashboard/        (6 files) ✅
 ├── shared/models/                  (4 files) ✅
-├── infrastructure/terraform/       (4 files) ✅
+├── infrastructure/cloudformation/       (4 files) ✅
 ├── deployment/docker/              (1 file)  ✅
 ├── docs/                           (3 files) ✅
 └── Documentation                   (7 files) ✅
@@ -497,7 +497,7 @@ parental-control-backend/  (53 files)
 - Mumbai region (ap-south-1)
 - Multi-AZ deployment
 - Managed services (MSK, ElastiCache, DynamoDB)
-- Infrastructure as Code (Terraform)
+- Infrastructure as Code (cloudformation)
 
 ### ✅ **Cisco FTD Integration**
 - REST API (FMC)
@@ -524,8 +524,8 @@ parental-control-backend/  (53 files)
 | Environment | Status | URL |
 |-------------|--------|-----|
 | **Local Development** | ✅ Ready | `docker-compose up -d` |
-| **AWS Staging** | 📝 Terraform ready | `terraform apply` |
-| **AWS Production** | 📝 Terraform ready | Awaiting deployment |
+| **AWS Staging** | 📝 cloudformation ready | `cloudformation apply` |
+| **AWS Production** | 📝 cloudformation ready | Awaiting deployment |
 
 ---
 
@@ -538,7 +538,7 @@ parental-control-backend/  (53 files)
 - [ ] Security audit
 
 ### Phase 2: AWS Deployment
-- [ ] Complete Terraform ECS configuration
+- [ ] Complete cloudformation ECS configuration
 - [ ] Create CI/CD pipeline (GitHub Actions)
 - [ ] Deploy to staging environment
 - [ ] Production deployment

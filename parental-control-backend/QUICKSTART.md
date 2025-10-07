@@ -207,9 +207,9 @@ aws configure
 # Region: ap-south-1 (Mumbai)
 
 # 2. Deploy infrastructure
-cd infrastructure/terraform
-terraform init
-terraform apply
+cd infrastructure/cloudformation
+cloudformation init
+cloudformation apply
 
 # 3. Build and push Docker images
 ./scripts/build-and-push.sh
