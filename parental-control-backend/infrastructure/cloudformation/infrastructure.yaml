@@ -1,0 +1,1691 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Cisco AI Family Safety - Parental Control Infrastructure (CloudFormation)'
+
+################################################################################
+# Parameters
+################################################################################
+
+Parameters:
+  Environment:
+    Type: String
+    Default: prod
+    Description: Environment name
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+
+  VpcCidr:
+    Type: String
+    Default: 10.0.0.0/16
+    Description: VPC CIDR block
+
+  # MSK Configuration
+  MSKInstanceType:
+    Type: String
+    Default: kafka.m5.large
+    Description: MSK broker instance type
+    AllowedValues:
+      - kafka.t3.small
+      - kafka.m5.large
+      - kafka.m5.xlarge
+
+  MSKBrokerCount:
+    Type: Number
+    Default: 3
+    Description: Number of MSK brokers (must be multiple of AZs)
+    AllowedValues:
+      - 3
+      - 6
+      - 9
+
+  MSKKafkaVersion:
+    Type: String
+    Default: 3.5.1
+    Description: Kafka version
+
+  # Redis Configuration
+  RedisNodeType:
+    Type: String
+    Default: cache.r6g.large
+    Description: Redis node type
+    AllowedValues:
+      - cache.t3.micro
+      - cache.r6g.large
+      - cache.r6g.xlarge
+
+  RedisNumCacheClusters:
+    Type: Number
+    Default: 2
+    Description: Number of Redis cache clusters
+
+  # ECS Configuration
+  ECSTaskCPU:
+    Type: Number
+    Default: 1024
+    Description: ECS task CPU units
+    AllowedValues:
+      - 256
+      - 512
+      - 1024
+      - 2048
+
+  ECSTaskMemory:
+    Type: Number
+    Default: 2048
+    Description: ECS task memory in MB
+    AllowedValues:
+      - 512
+      - 1024
+      - 2048
+      - 4096
+
+  ECSDesiredCount:
+    Type: Number
+    Default: 2
+    Description: Desired number of ECS tasks
+    MinValue: 1
+    MaxValue: 10
+
+  # FTD Configuration (sensitive values - set via parameters file)
+  FTDHost:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: Cisco FTD/FMC hostname or IP
+
+  FTDUsername:
+    Type: String
+    NoEcho: true
+    Default: admin
+    Description: FTD username
+
+  FTDPassword:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: FTD password
+
+  CloudWatchRetentionDays:
+    Type: Number
+    Default: 30
+    Description: CloudWatch log retention in days
+    AllowedValues:
+      - 1
+      - 7
+      - 14
+      - 30
+      - 60
+      - 90
+
+################################################################################
+# Metadata
+################################################################################
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Network Configuration
+        Parameters:
+          - VpcCidr
+      - Label:
+          default: MSK (Kafka) Configuration
+        Parameters:
+          - MSKInstanceType
+          - MSKBrokerCount
+          - MSKKafkaVersion
+      - Label:
+          default: ElastiCache (Redis) Configuration
+        Parameters:
+          - RedisNodeType
+          - RedisNumCacheClusters
+      - Label:
+          default: ECS Fargate Configuration
+        Parameters:
+          - ECSTaskCPU
+          - ECSTaskMemory
+          - ECSDesiredCount
+      - Label:
+          default: Cisco FTD Configuration
+        Parameters:
+          - FTDHost
+          - FTDUsername
+          - FTDPassword
+      - Label:
+          default: Logging Configuration
+        Parameters:
+          - CloudWatchRetentionDays
+
+################################################################################
+# Mappings
+################################################################################
+
+Mappings:
+  # Subnet configuration
+  SubnetConfig:
+    Private1:
+      CIDR: 10.0.1.0/24
+    Private2:
+      CIDR: 10.0.2.0/24
+    Private3:
+      CIDR: 10.0.3.0/24
+    Public1:
+      CIDR: 10.0.101.0/24
+    Public2:
+      CIDR: 10.0.102.0/24
+    Public3:
+      CIDR: 10.0.103.0/24
+
+################################################################################
+# Resources
+################################################################################
+
+Resources:
+
+  #############################################################################
+  # VPC and Networking
+  #############################################################################
+
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-vpc'
+        - Key: Project
+          Value: ParentalControl
+        - Key: Environment
+          Value: !Ref Environment
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-igw'
+        - Key: Project
+          Value: ParentalControl
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  # Public Subnets
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !FindInMap [SubnetConfig, Public1, CIDR]
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-public-subnet-1'
+        - Key: Tier
+          Value: Public
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !FindInMap [SubnetConfig, Public2, CIDR]
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-public-subnet-2'
+        - Key: Tier
+          Value: Public
+
+  PublicSubnet3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !FindInMap [SubnetConfig, Public3, CIDR]
+      AvailabilityZone: !Select [2, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-public-subnet-3'
+        - Key: Tier
+          Value: Public
+
+  # Private Subnets
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !FindInMap [SubnetConfig, Private1, CIDR]
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-private-subnet-1'
+        - Key: Tier
+          Value: Private
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !FindInMap [SubnetConfig, Private2, CIDR]
+      AvailabilityZone: !Select [1, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-private-subnet-2'
+        - Key: Tier
+          Value: Private
+
+  PrivateSubnet3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !FindInMap [SubnetConfig, Private3, CIDR]
+      AvailabilityZone: !Select [2, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-private-subnet-3'
+        - Key: Tier
+          Value: Private
+
+  # NAT Gateways and Elastic IPs
+  NatEIP1:
+    Type: AWS::EC2::EIP
+    DependsOn: AttachGateway
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-nat-eip-1'
+
+  NatEIP2:
+    Type: AWS::EC2::EIP
+    DependsOn: AttachGateway
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-nat-eip-2'
+
+  NatEIP3:
+    Type: AWS::EC2::EIP
+    DependsOn: AttachGateway
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-nat-eip-3'
+
+  NatGateway1:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatEIP1.AllocationId
+      SubnetId: !Ref PublicSubnet1
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-nat-1'
+
+  NatGateway2:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatEIP2.AllocationId
+      SubnetId: !Ref PublicSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-nat-2'
+
+  NatGateway3:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatEIP3.AllocationId
+      SubnetId: !Ref PublicSubnet3
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-nat-3'
+
+  # Route Tables
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-public-rt'
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnet3RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet3
+      RouteTableId: !Ref PublicRouteTable
+
+  # Private Route Tables
+  PrivateRouteTable1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-private-rt-1'
+
+  PrivateRoute1:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway1
+
+  PrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable1
+
+  PrivateRouteTable2:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-private-rt-2'
+
+  PrivateRoute2:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable2
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway2
+
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable2
+
+  PrivateRouteTable3:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-private-rt-3'
+
+  PrivateRoute3:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable3
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway3
+
+  PrivateSubnet3RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet3
+      RouteTableId: !Ref PrivateRouteTable3
+
+  # VPC Endpoints
+  S3VPCEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.s3'
+      RouteTableIds:
+        - !Ref PrivateRouteTable1
+        - !Ref PrivateRouteTable2
+        - !Ref PrivateRouteTable3
+
+  DynamoDBVPCEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.dynamodb'
+      RouteTableIds:
+        - !Ref PrivateRouteTable1
+        - !Ref PrivateRouteTable2
+        - !Ref PrivateRouteTable3
+
+  #############################################################################
+  # DynamoDB Tables
+  #############################################################################
+
+  ParentalPoliciesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'pc-${Environment}-parental-policies'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: childPhoneNumber
+          AttributeType: S
+        - AttributeName: policyId
+          AttributeType: S
+        - AttributeName: parentEmail
+          AttributeType: S
+        - AttributeName: createdAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: childPhoneNumber
+          KeyType: HASH
+        - AttributeName: policyId
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: ParentEmailIndex
+          KeySchema:
+            - AttributeName: parentEmail
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-parental-policies'
+        - Key: Project
+          Value: ParentalControl
+
+  ApplicationRegistryTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'pc-${Environment}-application-registry'
+      BillingMode: PROVISIONED
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 1
+      AttributeDefinitions:
+        - AttributeName: appName
+          AttributeType: S
+      KeySchema:
+        - AttributeName: appName
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-application-registry'
+        - Key: Project
+          Value: ParentalControl
+
+  EnforcementHistoryTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'pc-${Environment}-enforcement-history'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: childPhoneNumber
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+        - AttributeName: status
+          AttributeType: S
+      KeySchema:
+        - AttributeName: childPhoneNumber
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: StatusTimestampIndex
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+            - AttributeName: timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-enforcement-history'
+        - Key: Project
+          Value: ParentalControl
+
+  BlockedRequestMetricsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'pc-${Environment}-blocked-request-metrics'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: childPhoneNumber
+          AttributeType: S
+        - AttributeName: dateApp
+          AttributeType: S
+        - AttributeName: parentEmail
+          AttributeType: S
+        - AttributeName: date
+          AttributeType: S
+      KeySchema:
+        - AttributeName: childPhoneNumber
+          KeyType: HASH
+        - AttributeName: dateApp
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: ParentEmailDateIndex
+          KeySchema:
+            - AttributeName: parentEmail
+              KeyType: HASH
+            - AttributeName: date
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-blocked-request-metrics'
+        - Key: Project
+          Value: ParentalControl
+
+  FTDRuleMappingTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'pc-${Environment}-ftd-rule-mapping'
+      BillingMode: PROVISIONED
+      ProvisionedThroughput:
+        ReadCapacityUnits: 20
+        WriteCapacityUnits: 20
+      AttributeDefinitions:
+        - AttributeName: childPhoneNumber
+          AttributeType: S
+        - AttributeName: ruleId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: childPhoneNumber
+          KeyType: HASH
+        - AttributeName: ruleId
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-ftd-rule-mapping'
+        - Key: Project
+          Value: ParentalControl
+
+  #############################################################################
+  # Amazon MSK (Kafka)
+  #############################################################################
+
+  MSKKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: KMS key for MSK encryption
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: Allow MSK to use the key
+            Effect: Allow
+            Principal:
+              Service: kafka.amazonaws.com
+            Action:
+              - 'kms:Decrypt'
+              - 'kms:GenerateDataKey'
+            Resource: '*'
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-msk-kms'
+
+  MSKKMSKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/pc-${Environment}-msk'
+      TargetKeyId: !Ref MSKKMSKey
+
+  MSKSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for MSK cluster
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 9092
+          ToPort: 9092
+          SourceSecurityGroupId: !Ref ECSTasksSecurityGroup
+          Description: Kafka from ECS
+        - IpProtocol: tcp
+          FromPort: 9094
+          ToPort: 9094
+          SourceSecurityGroupId: !Ref ECSTasksSecurityGroup
+          Description: Kafka TLS from ECS
+      SecurityGroupEgress:
+        - IpProtocol: '-1'
+          CidrIp: 0.0.0.0/0
+          Description: Allow all outbound
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-msk-sg'
+
+  MSKClusterLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/msk/pc-${Environment}'
+      RetentionInDays: !Ref CloudWatchRetentionDays
+
+  MSKClusterConfiguration:
+    Type: AWS::MSK::Configuration
+    Properties:
+      Name: !Sub 'pc-${Environment}-msk-config'
+      ServerProperties: |
+        auto.create.topics.enable=true
+        default.replication.factor=3
+        min.insync.replicas=2
+        num.partitions=6
+        log.retention.hours=168
+        compression.type=gzip
+
+  MSKCluster:
+    Type: AWS::MSK::Cluster
+    Properties:
+      ClusterName: !Sub 'pc-${Environment}-kafka'
+      KafkaVersion: !Ref MSKKafkaVersion
+      NumberOfBrokerNodes: !Ref MSKBrokerCount
+      BrokerNodeGroupInfo:
+        InstanceType: !Ref MSKInstanceType
+        ClientSubnets:
+          - !Ref PrivateSubnet1
+          - !Ref PrivateSubnet2
+          - !Ref PrivateSubnet3
+        SecurityGroups:
+          - !Ref MSKSecurityGroup
+        StorageInfo:
+          EBSStorageInfo:
+            VolumeSize: 500
+      EncryptionInfo:
+        EncryptionInTransit:
+          ClientBroker: TLS
+          InCluster: true
+        EncryptionAtRest:
+          DataVolumeKMSKeyId: !Ref MSKKMSKey
+      ConfigurationInfo:
+        Arn: !GetAtt MSKClusterConfiguration.Arn
+        Revision: 1
+      LoggingInfo:
+        BrokerLogs:
+          CloudWatchLogs:
+            Enabled: true
+            LogGroup: !Ref MSKClusterLogGroup
+      Tags:
+        Name: !Sub 'pc-${Environment}-kafka-cluster'
+        Project: ParentalControl
+
+  #############################################################################
+  # Amazon ElastiCache (Redis)
+  #############################################################################
+
+  RedisSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      Description: Subnet group for Redis cluster
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+        - !Ref PrivateSubnet3
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-redis-subnet-group'
+
+  RedisSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Redis cluster
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          SourceSecurityGroupId: !Ref ECSTasksSecurityGroup
+          Description: Redis from ECS
+      SecurityGroupEgress:
+        - IpProtocol: '-1'
+          CidrIp: 0.0.0.0/0
+          Description: Allow all outbound
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-redis-sg'
+
+  RedisLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/elasticache/pc-${Environment}'
+      RetentionInDays: !Ref CloudWatchRetentionDays
+
+  RedisReplicationGroup:
+    Type: AWS::ElastiCache::ReplicationGroup
+    Properties:
+      ReplicationGroupId: !Sub 'pc-${Environment}-redis'
+      ReplicationGroupDescription: Redis cluster for parental control IP/phone mappings
+      Engine: redis
+      EngineVersion: '7.1'
+      CacheNodeType: !Ref RedisNodeType
+      NumCacheClusters: !Ref RedisNumCacheClusters
+      Port: 6379
+      CacheSubnetGroupName: !Ref RedisSubnetGroup
+      SecurityGroupIds:
+        - !Ref RedisSecurityGroup
+      AutomaticFailoverEnabled: true
+      MultiAZEnabled: true
+      SnapshotRetentionLimit: 5
+      SnapshotWindow: '03:00-05:00'
+      PreferredMaintenanceWindow: 'mon:05:00-mon:07:00'
+      AtRestEncryptionEnabled: true
+      TransitEncryptionEnabled: true
+      AutoMinorVersionUpgrade: true
+      LogDeliveryConfigurations:
+        - DestinationType: cloudwatch-logs
+          DestinationDetails:
+            CloudWatchLogsDetails:
+              LogGroup: !Ref RedisLogGroup
+          LogFormat: json
+          LogType: slow-log
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-redis-cluster'
+        - Key: Project
+          Value: ParentalControl
+
+  #############################################################################
+  # Amazon SQS
+  #############################################################################
+
+  EnforcementDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'pc-${Environment}-enforcement-dlq'
+      MessageRetentionPeriod: 1209600  # 14 days
+      SqsManagedSseEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-enforcement-dlq'
+        - Key: Project
+          Value: ParentalControl
+
+  EnforcementQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'pc-${Environment}-enforcement-requests'
+      VisibilityTimeout: 300
+      MessageRetentionPeriod: 86400
+      ReceiveMessageWaitTimeSeconds: 20
+      SqsManagedSseEnabled: true
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt EnforcementDLQ.Arn
+        maxReceiveCount: 3
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-enforcement-queue'
+        - Key: Project
+          Value: ParentalControl
+
+  SQSHighMessageCountAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'pc-${Environment}-sqs-high-messages'
+      AlarmDescription: Alert when SQS queue has > 1000 messages
+      MetricName: ApproximateNumberOfMessagesVisible
+      Namespace: AWS/SQS
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 1000
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt EnforcementQueue.QueueName
+
+  SQSDLQMessagesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'pc-${Environment}-sqs-dlq-messages'
+      AlarmDescription: Alert when messages appear in DLQ
+      MetricName: ApproximateNumberOfMessagesVisible
+      Namespace: AWS/SQS
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt EnforcementDLQ.QueueName
+
+  #############################################################################
+  # Amazon ECR Repositories
+  #############################################################################
+
+  PGatewayECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub 'pc-${Environment}/p-gateway-simulator'
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [{
+              "rulePriority": 1,
+              "description": "Keep last 10 images",
+              "selection": {
+                "tagStatus": "any",
+                "countType": "imageCountMoreThan",
+                "countNumber": 10
+              },
+              "action": {
+                "type": "expire"
+              }
+            }]
+          }
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-p-gateway-repo'
+        - Key: Service
+          Value: p-gateway-simulator
+
+  KafkaSubscriberECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub 'pc-${Environment}/kafka-subscriber'
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [{
+              "rulePriority": 1,
+              "description": "Keep last 10 images",
+              "selection": {
+                "tagStatus": "any",
+                "countType": "imageCountMoreThan",
+                "countNumber": 10
+              },
+              "action": {
+                "type": "expire"
+              }
+            }]
+          }
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-kafka-subscriber-repo'
+        - Key: Service
+          Value: kafka-subscriber
+
+  PolicyEnforcerECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub 'pc-${Environment}/policy-enforcer'
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [{
+              "rulePriority": 1,
+              "description": "Keep last 10 images",
+              "selection": {
+                "tagStatus": "any",
+                "countType": "imageCountMoreThan",
+                "countNumber": 10
+              },
+              "action": {
+                "type": "expire"
+              }
+            }]
+          }
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-policy-enforcer-repo'
+        - Key: Service
+          Value: policy-enforcer
+
+  FTDIntegrationECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub 'pc-${Environment}/ftd-integration'
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [{
+              "rulePriority": 1,
+              "description": "Keep last 10 images",
+              "selection": {
+                "tagStatus": "any",
+                "countType": "imageCountMoreThan",
+                "countNumber": 10
+              },
+              "action": {
+                "type": "expire"
+              }
+            }]
+          }
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-ftd-integration-repo'
+        - Key: Service
+          Value: ftd-integration
+
+  AnalyticsDashboardECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub 'pc-${Environment}/analytics-dashboard'
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [{
+              "rulePriority": 1,
+              "description": "Keep last 10 images",
+              "selection": {
+                "tagStatus": "any",
+                "countType": "imageCountMoreThan",
+                "countNumber": 10
+              },
+              "action": {
+                "type": "expire"
+              }
+            }]
+          }
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-analytics-dashboard-repo'
+        - Key: Service
+          Value: analytics-dashboard
+
+  #############################################################################
+  # Amazon ECS
+  #############################################################################
+
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub 'pc-${Environment}-cluster'
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-ecs-cluster'
+        - Key: Project
+          Value: ParentalControl
+
+  ECSTasksSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for ECS tasks
+      VpcId: !Ref VPC
+      SecurityGroupEgress:
+        - IpProtocol: '-1'
+          CidrIp: 0.0.0.0/0
+          Description: Allow all outbound
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-ecs-tasks-sg'
+
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'pc-${Environment}-ecs-task-execution-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'
+      Tags:
+        - Key: Project
+          Value: ParentalControl
+
+  ECSTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'pc-${Environment}-ecs-task-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: !Sub 'pc-${Environment}-ecs-task-policy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'dynamodb:PutItem'
+                  - 'dynamodb:GetItem'
+                  - 'dynamodb:UpdateItem'
+                  - 'dynamodb:Query'
+                  - 'dynamodb:Scan'
+                  - 'dynamodb:DeleteItem'
+                  - 'dynamodb:BatchWriteItem'
+                Resource:
+                  - !GetAtt ParentalPoliciesTable.Arn
+                  - !GetAtt ApplicationRegistryTable.Arn
+                  - !GetAtt EnforcementHistoryTable.Arn
+                  - !GetAtt BlockedRequestMetricsTable.Arn
+                  - !GetAtt FTDRuleMappingTable.Arn
+                  - !Sub '${ParentalPoliciesTable.Arn}/index/*'
+                  - !Sub '${BlockedRequestMetricsTable.Arn}/index/*'
+              - Effect: Allow
+                Action:
+                  - 'sqs:SendMessage'
+                  - 'sqs:ReceiveMessage'
+                  - 'sqs:DeleteMessage'
+                  - 'sqs:GetQueueAttributes'
+                  - 'sqs:ChangeMessageVisibility'
+                Resource:
+                  - !GetAtt EnforcementQueue.Arn
+                  - !GetAtt EnforcementDLQ.Arn
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: 'arn:aws:logs:*:*:*'
+              - Effect: Allow
+                Action:
+                  - 'cloudwatch:PutMetricData'
+                Resource: '*'
+      Tags:
+        - Key: Project
+          Value: ParentalControl
+
+  # CloudWatch Log Groups for ECS
+  PGatewayLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/ecs/pc-${Environment}/p-gateway'
+      RetentionInDays: !Ref CloudWatchRetentionDays
+
+  KafkaSubscriberLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/ecs/pc-${Environment}/kafka-subscriber'
+      RetentionInDays: !Ref CloudWatchRetentionDays
+
+  PolicyEnforcerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/ecs/pc-${Environment}/policy-enforcer'
+      RetentionInDays: !Ref CloudWatchRetentionDays
+
+  FTDIntegrationLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/ecs/pc-${Environment}/ftd-integration'
+      RetentionInDays: !Ref CloudWatchRetentionDays
+
+  AnalyticsDashboardLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/ecs/pc-${Environment}/analytics-dashboard'
+      RetentionInDays: !Ref CloudWatchRetentionDays
+
+  # Service Discovery
+  ServiceDiscoveryNamespace:
+    Type: AWS::ServiceDiscovery::PrivateDnsNamespace
+    Properties:
+      Name: !Sub 'pc-${Environment}.local'
+      Description: Private DNS namespace for parental control services
+      Vpc: !Ref VPC
+
+  FTDIntegrationServiceDiscovery:
+    Type: AWS::ServiceDiscovery::Service
+    Properties:
+      Name: ftd-integration
+      DnsConfig:
+        DnsRecords:
+          - Type: A
+            TTL: 10
+        RoutingPolicy: MULTIVALUE
+      HealthCheckCustomConfig:
+        FailureThreshold: 1
+      NamespaceId: !Ref ServiceDiscoveryNamespace
+
+  # ECS Task Definitions
+  PGatewayTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub 'pc-${Environment}-p-gateway'
+      RequiresCompatibilities:
+        - FARGATE
+      NetworkMode: awsvpc
+      Cpu: !Ref ECSTaskCPU
+      Memory: !Ref ECSTaskMemory
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      ContainerDefinitions:
+        - Name: p-gateway-simulator
+          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${PGatewayECRRepository}:latest'
+          Environment:
+            - Name: KAFKA_BOOTSTRAP_SERVERS
+              Value: !GetAtt MSKCluster.BootstrapBrokersTls
+            - Name: KAFKA_TOPIC
+              Value: session-data
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region
+            - Name: LOG_LEVEL
+              Value: INFO
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref PGatewayLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+      Tags:
+        - Key: Project
+          Value: ParentalControl
+
+  KafkaSubscriberTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub 'pc-${Environment}-kafka-subscriber'
+      RequiresCompatibilities:
+        - FARGATE
+      NetworkMode: awsvpc
+      Cpu: !Ref ECSTaskCPU
+      Memory: !Ref ECSTaskMemory
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      ContainerDefinitions:
+        - Name: kafka-subscriber
+          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${KafkaSubscriberECRRepository}:latest'
+          Environment:
+            - Name: KAFKA_BOOTSTRAP_SERVERS
+              Value: !GetAtt MSKCluster.BootstrapBrokersTls
+            - Name: KAFKA_TOPIC
+              Value: session-data
+            - Name: KAFKA_GROUP_ID
+              Value: parental-control-subscriber
+            - Name: REDIS_HOST
+              Value: !GetAtt RedisReplicationGroup.PrimaryEndPoint.Address
+            - Name: REDIS_PORT
+              Value: !GetAtt RedisReplicationGroup.PrimaryEndPoint.Port
+            - Name: DYNAMODB_TABLE_POLICIES
+              Value: !Ref ParentalPoliciesTable
+            - Name: SQS_QUEUE_URL
+              Value: !Ref EnforcementQueue
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region
+            - Name: LOG_LEVEL
+              Value: INFO
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref KafkaSubscriberLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+      Tags:
+        - Key: Project
+          Value: ParentalControl
+
+  PolicyEnforcerTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub 'pc-${Environment}-policy-enforcer'
+      RequiresCompatibilities:
+        - FARGATE
+      NetworkMode: awsvpc
+      Cpu: !Ref ECSTaskCPU
+      Memory: !Ref ECSTaskMemory
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      ContainerDefinitions:
+        - Name: policy-enforcer
+          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${PolicyEnforcerECRRepository}:latest'
+          Environment:
+            - Name: SQS_QUEUE_URL
+              Value: !Ref EnforcementQueue
+            - Name: REDIS_HOST
+              Value: !GetAtt RedisReplicationGroup.PrimaryEndPoint.Address
+            - Name: REDIS_PORT
+              Value: !GetAtt RedisReplicationGroup.PrimaryEndPoint.Port
+            - Name: DYNAMODB_TABLE_POLICIES
+              Value: !Ref ParentalPoliciesTable
+            - Name: DYNAMODB_TABLE_ENFORCEMENT_HISTORY
+              Value: !Ref EnforcementHistoryTable
+            - Name: DYNAMODB_TABLE_METRICS
+              Value: !Ref BlockedRequestMetricsTable
+            - Name: DYNAMODB_TABLE_FTD_RULES
+              Value: !Ref FTDRuleMappingTable
+            - Name: FTD_INTEGRATION_URL
+              Value: http://ftd-integration:5000
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region
+            - Name: LOG_LEVEL
+              Value: INFO
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref PolicyEnforcerLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+      Tags:
+        - Key: Project
+          Value: ParentalControl
+
+  FTDIntegrationTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub 'pc-${Environment}-ftd-integration'
+      RequiresCompatibilities:
+        - FARGATE
+      NetworkMode: awsvpc
+      Cpu: !Ref ECSTaskCPU
+      Memory: !Ref ECSTaskMemory
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      ContainerDefinitions:
+        - Name: ftd-integration
+          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${FTDIntegrationECRRepository}:latest'
+          PortMappings:
+            - ContainerPort: 5000
+              Protocol: tcp
+          Environment:
+            - Name: FTD_HOST
+              Value: !Ref FTDHost
+            - Name: FTD_USERNAME
+              Value: !Ref FTDUsername
+            - Name: FTD_PASSWORD
+              Value: !Ref FTDPassword
+            - Name: API_PORT
+              Value: '5000'
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region
+            - Name: LOG_LEVEL
+              Value: INFO
+          HealthCheck:
+            Command:
+              - CMD-SHELL
+              - curl -f http://localhost:5000/health || exit 1
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 60
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref FTDIntegrationLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+      Tags:
+        - Key: Project
+          Value: ParentalControl
+
+  AnalyticsDashboardTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub 'pc-${Environment}-analytics-dashboard'
+      RequiresCompatibilities:
+        - FARGATE
+      NetworkMode: awsvpc
+      Cpu: !Ref ECSTaskCPU
+      Memory: !Ref ECSTaskMemory
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      ContainerDefinitions:
+        - Name: analytics-dashboard
+          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${AnalyticsDashboardECRRepository}:latest'
+          PortMappings:
+            - ContainerPort: 8000
+              Protocol: tcp
+          Environment:
+            - Name: DYNAMODB_TABLE_POLICIES
+              Value: !Ref ParentalPoliciesTable
+            - Name: DYNAMODB_TABLE_METRICS
+              Value: !Ref BlockedRequestMetricsTable
+            - Name: DYNAMODB_TABLE_ENFORCEMENT_HISTORY
+              Value: !Ref EnforcementHistoryTable
+            - Name: API_PORT
+              Value: '8000'
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region
+            - Name: LOG_LEVEL
+              Value: INFO
+          HealthCheck:
+            Command:
+              - CMD-SHELL
+              - curl -f http://localhost:8000/health || exit 1
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 60
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref AnalyticsDashboardLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+      Tags:
+        - Key: Project
+          Value: ParentalControl
+
+  # ECS Services
+  PGatewayService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: !Sub 'pc-${Environment}-p-gateway-service'
+      Cluster: !Ref ECSCluster
+      TaskDefinition: !Ref PGatewayTaskDefinition
+      DesiredCount: !Ref ECSDesiredCount
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets:
+            - !Ref PrivateSubnet1
+            - !Ref PrivateSubnet2
+            - !Ref PrivateSubnet3
+          SecurityGroups:
+            - !Ref ECSTasksSecurityGroup
+          AssignPublicIp: DISABLED
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-p-gateway-service'
+
+  KafkaSubscriberService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: !Sub 'pc-${Environment}-kafka-subscriber-service'
+      Cluster: !Ref ECSCluster
+      TaskDefinition: !Ref KafkaSubscriberTaskDefinition
+      DesiredCount: !Ref ECSDesiredCount
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets:
+            - !Ref PrivateSubnet1
+            - !Ref PrivateSubnet2
+            - !Ref PrivateSubnet3
+          SecurityGroups:
+            - !Ref ECSTasksSecurityGroup
+          AssignPublicIp: DISABLED
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-kafka-subscriber-service'
+
+  PolicyEnforcerService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: !Sub 'pc-${Environment}-policy-enforcer-service'
+      Cluster: !Ref ECSCluster
+      TaskDefinition: !Ref PolicyEnforcerTaskDefinition
+      DesiredCount: !Ref ECSDesiredCount
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets:
+            - !Ref PrivateSubnet1
+            - !Ref PrivateSubnet2
+            - !Ref PrivateSubnet3
+          SecurityGroups:
+            - !Ref ECSTasksSecurityGroup
+          AssignPublicIp: DISABLED
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-policy-enforcer-service'
+
+  FTDIntegrationService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: !Sub 'pc-${Environment}-ftd-integration-service'
+      Cluster: !Ref ECSCluster
+      TaskDefinition: !Ref FTDIntegrationTaskDefinition
+      DesiredCount: !Ref ECSDesiredCount
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets:
+            - !Ref PrivateSubnet1
+            - !Ref PrivateSubnet2
+            - !Ref PrivateSubnet3
+          SecurityGroups:
+            - !Ref ECSTasksSecurityGroup
+          AssignPublicIp: DISABLED
+      ServiceRegistries:
+        - RegistryArn: !GetAtt FTDIntegrationServiceDiscovery.Arn
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-ftd-integration-service'
+
+  AnalyticsDashboardService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: !Sub 'pc-${Environment}-analytics-dashboard-service'
+      Cluster: !Ref ECSCluster
+      TaskDefinition: !Ref AnalyticsDashboardTaskDefinition
+      DesiredCount: !Ref ECSDesiredCount
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets:
+            - !Ref PrivateSubnet1
+            - !Ref PrivateSubnet2
+            - !Ref PrivateSubnet3
+          SecurityGroups:
+            - !Ref ECSTasksSecurityGroup
+          AssignPublicIp: DISABLED
+      Tags:
+        - Key: Name
+          Value: !Sub 'pc-${Environment}-analytics-dashboard-service'
+
+################################################################################
+# Outputs
+################################################################################
+
+Outputs:
+  VpcId:
+    Description: VPC ID
+    Value: !Ref VPC
+    Export:
+      Name: !Sub '${AWS::StackName}-VpcId'
+
+  VpcCidr:
+    Description: VPC CIDR block
+    Value: !GetAtt VPC.CidrBlock
+    Export:
+      Name: !Sub '${AWS::StackName}-VpcCidr'
+
+  PrivateSubnetIds:
+    Description: Private subnet IDs
+    Value: !Join
+      - ','
+      - - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+        - !Ref PrivateSubnet3
+    Export:
+      Name: !Sub '${AWS::StackName}-PrivateSubnetIds'
+
+  PublicSubnetIds:
+    Description: Public subnet IDs
+    Value: !Join
+      - ','
+      - - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+        - !Ref PublicSubnet3
+    Export:
+      Name: !Sub '${AWS::StackName}-PublicSubnetIds'
+
+  NatGatewayIPs:
+    Description: NAT Gateway public IPs
+    Value: !Join
+      - ','
+      - - !Ref NatEIP1
+        - !Ref NatEIP2
+        - !Ref NatEIP3
+
+  # DynamoDB Tables
+  ParentalPoliciesTableName:
+    Description: DynamoDB Parental Policies table name
+    Value: !Ref ParentalPoliciesTable
+
+  ParentalPoliciesStreamArn:
+    Description: DynamoDB Parental Policies stream ARN
+    Value: !GetAtt ParentalPoliciesTable.StreamArn
+
+  ApplicationRegistryTableName:
+    Description: DynamoDB Application Registry table name
+    Value: !Ref ApplicationRegistryTable
+
+  EnforcementHistoryTableName:
+    Description: DynamoDB Enforcement History table name
+    Value: !Ref EnforcementHistoryTable
+
+  BlockedRequestMetricsTableName:
+    Description: DynamoDB Blocked Request Metrics table name
+    Value: !Ref BlockedRequestMetricsTable
+
+  FTDRuleMappingTableName:
+    Description: DynamoDB FTD Rule Mapping table name
+    Value: !Ref FTDRuleMappingTable
+
+  # MSK
+  MSKClusterArn:
+    Description: MSK cluster ARN
+    Value: !Ref MSKCluster
+
+  MSKBootstrapBrokers:
+    Description: MSK bootstrap brokers (TLS)
+    Value: !GetAtt MSKCluster.BootstrapBrokersTls
+
+  # Redis
+  RedisEndpoint:
+    Description: Redis primary endpoint
+    Value: !GetAtt RedisReplicationGroup.PrimaryEndPoint.Address
+
+  RedisPort:
+    Description: Redis port
+    Value: !GetAtt RedisReplicationGroup.PrimaryEndPoint.Port
+
+  # SQS
+  SQSQueueUrl:
+    Description: SQS enforcement queue URL
+    Value: !Ref EnforcementQueue
+
+  SQSQueueArn:
+    Description: SQS enforcement queue ARN
+    Value: !GetAtt EnforcementQueue.Arn
+
+  SQSDLQUrl:
+    Description: SQS DLQ URL
+    Value: !Ref EnforcementDLQ
+
+  # ECR
+  PGatewayECRUrl:
+    Description: ECR repository URL for P-Gateway
+    Value: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${PGatewayECRRepository}'
+
+  KafkaSubscriberECRUrl:
+    Description: ECR repository URL for Kafka Subscriber
+    Value: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${KafkaSubscriberECRRepository}'
+
+  PolicyEnforcerECRUrl:
+    Description: ECR repository URL for Policy Enforcer
+    Value: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${PolicyEnforcerECRRepository}'
+
+  FTDIntegrationECRUrl:
+    Description: ECR repository URL for FTD Integration
+    Value: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${FTDIntegrationECRRepository}'
+
+  AnalyticsDashboardECRUrl:
+    Description: ECR repository URL for Analytics Dashboard
+    Value: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${AnalyticsDashboardECRRepository}'
+
+  # ECS
+  ECSClusterName:
+    Description: ECS cluster name
+    Value: !Ref ECSCluster
+
+  ECSClusterArn:
+    Description: ECS cluster ARN
+    Value: !GetAtt ECSCluster.Arn
+
+  ServiceDiscoveryNamespace:
+    Description: Service Discovery namespace
+    Value: !GetAtt ServiceDiscoveryNamespace.Name
+
+  # Quick Start
+  QuickStartCommands:
+    Description: Quick start commands
+    Value: !Sub |
+      ==========================================
+      DEPLOYMENT SUCCESSFUL!
+      ==========================================
+
+      Next Steps:
+
+      1. Build and Push Docker Images:
+         aws ecr get-login-password --region ${AWS::Region} | docker login --username AWS --password-stdin ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com
+
+      2. View Services:
+         aws ecs list-services --cluster ${ECSCluster} --region ${AWS::Region}
+
+      3. View Logs:
+         aws logs tail /ecs/pc-${Environment}/p-gateway --follow --region ${AWS::Region}
+
+      4. Access MSK:
+         Bootstrap Brokers: ${MSKCluster.BootstrapBrokersTls}
+
+      5. Access Redis:
+         Endpoint: ${RedisReplicationGroup.PrimaryEndPoint.Address}:${RedisReplicationGroup.PrimaryEndPoint.Port}
+
+      6. SQS Queue:
+         URL: ${EnforcementQueue}
+
+      ==========================================
