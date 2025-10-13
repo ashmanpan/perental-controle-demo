@@ -7,7 +7,7 @@ import boto3
 from boto3.dynamodb.conditions import Key
 import json
 
-from config import Config
+from .config import Config
 
 logger = logging.getLogger(__name__)
 

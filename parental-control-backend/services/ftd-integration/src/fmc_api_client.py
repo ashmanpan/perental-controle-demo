@@ -7,7 +7,7 @@ import urllib3
 from typing import Dict, Optional, List
 import time
 
-from config import Config
+from .config import Config
 
 # Disable SSL warnings for self-signed certificates
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)

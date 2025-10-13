@@ -9,7 +9,7 @@ from confluent_kafka import Producer
 from confluent_kafka.admin import AdminClient, NewTopic
 import boto3
 
-from config import get_config
+from .config import get_config
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +42,12 @@ class SessionEventProducer:
                 'sasl.mechanism': 'AWS_MSK_IAM',
                 'sasl.jaas.config': 'software.amazon.msk.auth.iam.IAMLoginModule required;',
             })
+        elif self.config.kafka.security_protocol == 'SSL':
+            kafka_config.update({
+                'security.protocol': 'SSL',
+            })
 
-        logger.info(f"Connecting to Kafka: {kafka_config['bootstrap.servers']}")
+        logger.info(f"Connecting to Kafka: {kafka_config['bootstrap.servers']} with security: {self.config.kafka.security_protocol}")
         return Producer(kafka_config)
 
     def _delivery_callback(self, err, msg):
@@ -221,6 +225,10 @@ def create_topics_if_not_exist():
         admin_config.update({
             'security.protocol': 'SASL_SSL',
             'sasl.mechanism': 'AWS_MSK_IAM',
+        })
+    elif config.kafka.security_protocol == 'SSL':
+        admin_config.update({
+            'security.protocol': 'SSL',
         })
 
     admin_client = AdminClient(admin_config)

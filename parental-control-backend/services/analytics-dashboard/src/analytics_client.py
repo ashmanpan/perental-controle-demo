@@ -1,14 +1,17 @@
 """
-Analytics Client - Retrieves metrics from DynamoDB
+Analytics Client - Retrieves metrics from DynamoDB and session data from Redis
 """
+import json
 import logging
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 from collections import defaultdict
 import boto3
 from boto3.dynamodb.conditions import Key
+import redis
+from redis.connection import ConnectionPool, SSLConnection
 
-from config import Config
+from .config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +26,40 @@ class AnalyticsClient:
         self.policies_table = self.dynamodb.Table(config.dynamodb.table_policies)
         self.metrics_table = self.dynamodb.Table(config.dynamodb.table_metrics)
         self.history_table = self.dynamodb.Table(config.dynamodb.table_history)
+
+        # Initialize Redis client for session data
+        self.redis_client = self._create_redis_client()
+
+    def _create_redis_client(self) -> redis.Redis:
+        """Create Redis client with connection pooling"""
+        pool_kwargs = {
+            'host': self.config.redis.host,
+            'port': self.config.redis.port,
+            'db': self.config.redis.db,
+            'decode_responses': self.config.redis.decode_responses,
+            'socket_timeout': self.config.redis.socket_timeout,
+            'max_connections': self.config.redis.max_connections
+        }
+
+        if self.config.redis.password:
+            pool_kwargs['password'] = self.config.redis.password
+
+        if self.config.redis.ssl:
+            pool_kwargs['connection_class'] = SSLConnection
+            pool_kwargs['ssl_cert_reqs'] = None
+
+        pool = ConnectionPool(**pool_kwargs)
+        client = redis.Redis(connection_pool=pool)
+
+        # Test connection
+        try:
+            client.ping()
+            logger.info(f"Connected to Redis: {self.config.redis.host}:{self.config.redis.port}")
+        except redis.ConnectionError as e:
+            logger.error(f"Failed to connect to Redis: {e}")
+            raise
+
+        return client
 
     def get_children_for_parent(self, parent_email: str) -> List[Dict]:
         """Get all children managed by a parent"""
@@ -207,3 +244,66 @@ class AnalyticsClient:
         except Exception as e:
             logger.error(f"Failed to get detailed report: {e}")
             return {}
+
+    def get_current_session(self, phone_number: str) -> Optional[Dict]:
+        """Get current active session for a phone number from Redis"""
+        try:
+            # Query Redis for phone number key
+            key = f"phone:{phone_number}"
+            data = self.redis_client.get(key)
+
+            if data:
+                session = json.loads(data)
+                logger.info(f"Found active session for {phone_number}")
+                return {
+                    'phoneNumber': phone_number,
+                    'status': 'active',
+                    'privateIP': session.get('privateIP'),
+                    'publicIP': session.get('publicIP'),
+                    'imsi': session.get('imsi'),
+                    'sessionId': session.get('sessionId'),
+                    'timestamp': session.get('timestamp'),
+                    'sessionStatus': session.get('status')
+                }
+            else:
+                logger.info(f"No active session found for {phone_number}")
+                return None
+
+        except Exception as e:
+            logger.error(f"Failed to get current session for {phone_number}: {e}")
+            return None
+
+    def get_session_by_ip(self, ip_address: str) -> Optional[Dict]:
+        """Get session by IP address (reverse lookup)"""
+        try:
+            # Query Redis for IP key
+            key = f"ip:{ip_address}"
+            data = self.redis_client.get(key)
+
+            if data:
+                session = json.loads(data)
+                logger.info(f"Found session for IP {ip_address}")
+                return {
+                    'ipAddress': ip_address,
+                    'phoneNumber': session.get('msisdn'),
+                    'imsi': session.get('imsi'),
+                    'sessionId': session.get('sessionId'),
+                    'timestamp': session.get('timestamp')
+                }
+            else:
+                logger.info(f"No session found for IP {ip_address}")
+                return None
+
+        except Exception as e:
+            logger.error(f"Failed to get session for IP {ip_address}: {e}")
+            return None
+
+    def get_active_sessions_count(self) -> int:
+        """Get count of all active sessions"""
+        try:
+            count = self.redis_client.scard('active_sessions')
+            logger.info(f"Active sessions count: {count}")
+            return count
+        except Exception as e:
+            logger.error(f"Failed to get active sessions count: {e}")
+            return 0

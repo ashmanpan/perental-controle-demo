@@ -1,0 +1,253 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Cisco FTDv (Firepower Threat Defense Virtual) - Smallest Configuration'
+
+Parameters:
+  VpcId:
+    Type: String
+    Description: VPC ID from main stack
+    Default: vpc-01c0dbaf4ba865d8a
+
+  ManagementSubnetId:
+    Type: String
+    Description: Public subnet for FTD management interface
+    Default: subnet-0ca09975f2c86fc0a
+
+  DiagnosticSubnetId:
+    Type: String
+    Description: Public subnet for FTD diagnostic interface
+    Default: subnet-0e8aaf37af2ab31e5
+
+  InsideSubnetId:
+    Type: String
+    Description: Private subnet for FTD inside interface
+
+  OutsideSubnetId:
+    Type: String
+    Description: Public subnet for FTD outside interface
+    Default: subnet-072d446cbcee77832
+
+  InstanceType:
+    Type: String
+    Description: FTDv instance type (c5.xlarge is minimum)
+    Default: c5.xlarge
+    AllowedValues:
+      - c5.xlarge
+      - c5.2xlarge
+      - c5.4xlarge
+
+  KeyPairName:
+    Type: String
+    Description: EC2 Key Pair for SSH access
+    Default: ''
+
+  AdminPassword:
+    Type: String
+    Description: Admin password for FTDv (8-127 characters)
+    NoEcho: true
+    MinLength: 8
+    MaxLength: 127
+
+  FTDHostname:
+    Type: String
+    Description: Hostname for FTDv
+    Default: ftdv-parental-control
+
+Conditions:
+  HasKeyPair: !Not [!Equals [!Ref KeyPairName, '']]
+
+Resources:
+  # Security Group for FTD Management
+  FTDManagementSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: ftdv-management-sg
+      GroupDescription: Security group for FTDv management interface
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 10.0.0.0/8
+          Description: SSH from VPC
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 10.0.0.0/8
+          Description: HTTPS for management
+        - IpProtocol: icmp
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 10.0.0.0/8
+          Description: ICMP from VPC
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: Allow all outbound
+      Tags:
+        - Key: Name
+          Value: ftdv-management-sg
+        - Key: Project
+          Value: ParentalControl
+
+  # Security Group for FTD Data Interfaces
+  FTDDataSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: ftdv-data-sg
+      GroupDescription: Security group for FTDv data interfaces
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: Allow all traffic for inspection
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: Allow all outbound
+      Tags:
+        - Key: Name
+          Value: ftdv-data-sg
+        - Key: Project
+          Value: ParentalControl
+
+  # Management Network Interface
+  FTDManagementInterface:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref ManagementSubnetId
+      Description: FTDv Management Interface
+      GroupSet:
+        - !Ref FTDManagementSecurityGroup
+      SourceDestCheck: false
+      Tags:
+        - Key: Name
+          Value: ftdv-mgmt-interface
+
+  # Diagnostic Network Interface
+  FTDDiagnosticInterface:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref DiagnosticSubnetId
+      Description: FTDv Diagnostic Interface
+      GroupSet:
+        - !Ref FTDManagementSecurityGroup
+      SourceDestCheck: false
+      Tags:
+        - Key: Name
+          Value: ftdv-diag-interface
+
+  # Outside Network Interface (Internet-facing)
+  FTDOutsideInterface:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref OutsideSubnetId
+      Description: FTDv Outside Interface
+      GroupSet:
+        - !Ref FTDDataSecurityGroup
+      SourceDestCheck: false
+      Tags:
+        - Key: Name
+          Value: ftdv-outside-interface
+
+  # Inside Network Interface (Internal)
+  FTDInsideInterface:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref InsideSubnetId
+      Description: FTDv Inside Interface
+      GroupSet:
+        - !Ref FTDDataSecurityGroup
+      SourceDestCheck: false
+      Tags:
+        - Key: Name
+          Value: ftdv-inside-interface
+
+  # Elastic IP for Management
+  FTDManagementEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: ftdv-mgmt-eip
+
+  # Associate EIP to Management Interface
+  FTDManagementEIPAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      AllocationId: !GetAtt FTDManagementEIP.AllocationId
+      NetworkInterfaceId: !Ref FTDManagementInterface
+
+  # Elastic IP for Outside Interface
+  FTDOutsideEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: ftdv-outside-eip
+
+  # Associate EIP to Outside Interface
+  FTDOutsideEIPAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      AllocationId: !GetAtt FTDOutsideEIP.AllocationId
+      NetworkInterfaceId: !Ref FTDOutsideInterface
+
+  # FTDv EC2 Instance
+  # NOTE: You must subscribe to Cisco FTDv in AWS Marketplace first
+  # AMI ID format: ami-xxxxxxxxxxxxxxxxx (from Marketplace)
+  FTDvInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      # FTDv 7.7.10-3200-ENA (ap-south-1)
+      # Subscribed to Cisco FTDv PAYG c5.xlarge
+      ImageId: ami-032c855a100f8414a
+      InstanceType: !Ref InstanceType
+      KeyName: !If [HasKeyPair, !Ref KeyPairName, !Ref 'AWS::NoValue']
+      NetworkInterfaces:
+        - NetworkInterfaceId: !Ref FTDManagementInterface
+          DeviceIndex: 0
+        - NetworkInterfaceId: !Ref FTDDiagnosticInterface
+          DeviceIndex: 1
+        - NetworkInterfaceId: !Ref FTDOutsideInterface
+          DeviceIndex: 2
+        - NetworkInterfaceId: !Ref FTDInsideInterface
+          DeviceIndex: 3
+      UserData:
+        Fn::Base64: !Sub |
+          {
+            "AdminPassword": "${AdminPassword}",
+            "Hostname": "${FTDHostname}",
+            "ManageLocally": "Yes"
+          }
+      Tags:
+        - Key: Name
+          Value: !Ref FTDHostname
+        - Key: Project
+          Value: ParentalControl
+
+Outputs:
+  FTDManagementIP:
+    Description: FTDv Management Interface Public IP
+    Value: !Ref FTDManagementEIP
+    Export:
+      Name: !Sub '${AWS::StackName}-FTD-Management-IP'
+
+  FTDManagementURL:
+    Description: FTDv Management Console URL
+    Value: !Sub 'https://${FTDManagementEIP}'
+
+  FTDOutsideIP:
+    Description: FTDv Outside Interface Public IP
+    Value: !Ref FTDOutsideEIP
+
+  FTDInstanceId:
+    Description: FTDv EC2 Instance ID
+    Value: !Ref FTDvInstance
+
+  FTDManagementPrivateIP:
+    Description: FTDv Management Private IP
+    Value: !GetAtt FTDManagementInterface.PrimaryPrivateIpAddress
+    Export:
+      Name: !Sub '${AWS::StackName}-FTD-Private-IP'

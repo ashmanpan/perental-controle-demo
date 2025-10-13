@@ -5,9 +5,9 @@ import json
 import logging
 from typing import Dict, Optional
 import redis
-from redis.connection import ConnectionPool
+from redis.connection import ConnectionPool, SSLConnection
 
-from config import Config
+from .config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -21,16 +21,23 @@ class RedisClient:
 
     def _create_redis_client(self) -> redis.Redis:
         """Create Redis client with connection pooling"""
-        pool = ConnectionPool(
-            host=self.config.redis.host,
-            port=self.config.redis.port,
-            db=self.config.redis.db,
-            password=self.config.redis.password if self.config.redis.password else None,
-            ssl=self.config.redis.ssl,
-            decode_responses=self.config.redis.decode_responses,
-            socket_timeout=self.config.redis.socket_timeout,
-            max_connections=self.config.redis.max_connections
-        )
+        pool_kwargs = {
+            'host': self.config.redis.host,
+            'port': self.config.redis.port,
+            'db': self.config.redis.db,
+            'decode_responses': self.config.redis.decode_responses,
+            'socket_timeout': self.config.redis.socket_timeout,
+            'max_connections': self.config.redis.max_connections
+        }
+
+        if self.config.redis.password:
+            pool_kwargs['password'] = self.config.redis.password
+
+        if self.config.redis.ssl:
+            pool_kwargs['connection_class'] = SSLConnection
+            pool_kwargs['ssl_cert_reqs'] = None
+
+        pool = ConnectionPool(**pool_kwargs)
 
         client = redis.Redis(connection_pool=pool)
 

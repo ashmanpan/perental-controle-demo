@@ -6,8 +6,8 @@ import logging
 from flask import Flask, request, jsonify
 from typing import Dict
 
-from config import load_config
-from rule_manager import RuleManager
+from .config import load_config
+from .rule_manager import RuleManager
 
 # Configure logging
 config = load_config()

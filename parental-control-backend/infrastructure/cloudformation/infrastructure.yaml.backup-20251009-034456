@@ -1164,22 +1164,12 @@ Resources:
           Environment:
             - Name: KAFKA_BOOTSTRAP_SERVERS
               Value: !GetAtt MSKBootstrapBrokers.BootstrapBrokerStringTls
-            - Name: KAFKA_SECURITY_PROTOCOL
-              Value: SSL
             - Name: KAFKA_TOPIC
               Value: session-data
             - Name: AWS_REGION
               Value: !Ref AWS::Region
             - Name: LOG_LEVEL
               Value: INFO
-          HealthCheck:
-            Command:
-              - CMD-SHELL
-              - ps aux | grep -v grep | grep generator.py || exit 1
-            Interval: 30
-            Timeout: 5
-            Retries: 3
-            StartPeriod: 60
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -1207,8 +1197,6 @@ Resources:
           Environment:
             - Name: KAFKA_BOOTSTRAP_SERVERS
               Value: !GetAtt MSKBootstrapBrokers.BootstrapBrokerStringTls
-            - Name: KAFKA_SECURITY_PROTOCOL
-              Value: SSL
             - Name: KAFKA_TOPIC
               Value: session-data
             - Name: KAFKA_GROUP_ID
@@ -1217,8 +1205,6 @@ Resources:
               Value: !GetAtt RedisReplicationGroup.PrimaryEndPoint.Address
             - Name: REDIS_PORT
               Value: !GetAtt RedisReplicationGroup.PrimaryEndPoint.Port
-            - Name: REDIS_SSL
-              Value: 'true'
             - Name: DYNAMODB_TABLE_POLICIES
               Value: !Ref ParentalPoliciesTable
             - Name: SQS_QUEUE_URL
@@ -1227,14 +1213,6 @@ Resources:
               Value: !Ref AWS::Region
             - Name: LOG_LEVEL
               Value: INFO
-          HealthCheck:
-            Command:
-              - CMD-SHELL
-              - ps aux | grep -v grep | grep consumer.py || exit 1
-            Interval: 30
-            Timeout: 5
-            Retries: 3
-            StartPeriod: 60
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -1266,8 +1244,6 @@ Resources:
               Value: !GetAtt RedisReplicationGroup.PrimaryEndPoint.Address
             - Name: REDIS_PORT
               Value: !GetAtt RedisReplicationGroup.PrimaryEndPoint.Port
-            - Name: REDIS_SSL
-              Value: 'true'
             - Name: DYNAMODB_TABLE_POLICIES
               Value: !Ref ParentalPoliciesTable
             - Name: DYNAMODB_TABLE_ENFORCEMENT_HISTORY
@@ -1282,14 +1258,6 @@ Resources:
               Value: !Ref AWS::Region
             - Name: LOG_LEVEL
               Value: INFO
-          HealthCheck:
-            Command:
-              - CMD-SHELL
-              - ps aux | grep -v grep | grep enforcer.py || exit 1
-            Interval: 30
-            Timeout: 5
-            Retries: 3
-            StartPeriod: 60
           LogConfiguration:
             LogDriver: awslogs
             Options:

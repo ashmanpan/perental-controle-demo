@@ -8,9 +8,9 @@ import sys
 from typing import Dict
 from confluent_kafka import Consumer, KafkaError, KafkaException
 
-from config import load_config
-from redis_updater import RedisUpdater
-from policy_checker import PolicyChecker
+from .config import load_config
+from .redis_updater import RedisUpdater
+from .policy_checker import PolicyChecker
 
 logger = logging.getLogger(__name__)
 
@@ -50,8 +50,12 @@ class SessionEventConsumer:
                 'security.protocol': 'SASL_SSL',
                 'sasl.mechanism': 'AWS_MSK_IAM',
             })
+        elif self.config.kafka.security_protocol == 'SSL':
+            consumer_config.update({
+                'security.protocol': 'SSL',
+            })
 
-        logger.info(f"Creating Kafka consumer for group: {self.config.kafka.group_id}")
+        logger.info(f"Creating Kafka consumer for group: {self.config.kafka.group_id} with security: {self.config.kafka.security_protocol}")
         return Consumer(consumer_config)
 
     def _signal_handler(self, signum, frame):

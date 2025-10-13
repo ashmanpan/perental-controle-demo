@@ -10,9 +10,9 @@ import sys
 from datetime import datetime
 from typing import List
 
-from config import get_config
-from session_manager import SessionManager, UserDatabase
-from kafka_producer import SessionEventProducer, CloudWatchMetrics, create_topics_if_not_exist
+from .config import get_config
+from .session_manager import SessionManager, UserDatabase
+from .kafka_producer import SessionEventProducer, CloudWatchMetrics, create_topics_if_not_exist
 
 # Configure logging
 logging.basicConfig(

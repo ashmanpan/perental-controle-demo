@@ -6,7 +6,7 @@ import logging
 from typing import List, Dict, Optional
 import boto3
 
-from config import Config
+from .config import Config
 
 logger = logging.getLogger(__name__)
 

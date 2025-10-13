@@ -9,7 +9,7 @@ from typing import Dict, Optional, List
 from dataclasses import dataclass, asdict
 import logging
 
-from config import get_config
+from .config import get_config
 
 logger = logging.getLogger(__name__)
 

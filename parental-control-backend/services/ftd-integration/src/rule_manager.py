@@ -6,9 +6,9 @@ import logging
 import uuid
 from typing import Dict, List, Optional
 
-from config import Config
-from fmc_api_client import FMCAPIClient
-from ftd_ssh_client import FTDSSHClient
+from .config import Config
+from .fmc_api_client import FMCAPIClient
+from .ftd_ssh_client import FTDSSHClient
 
 logger = logging.getLogger(__name__)
 

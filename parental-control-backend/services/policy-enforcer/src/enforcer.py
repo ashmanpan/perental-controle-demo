@@ -9,11 +9,11 @@ import time
 from typing import Dict, List
 from datetime import datetime
 
-from config import load_config
-from redis_client import RedisClient
-from dynamodb_client import DynamoDBClient
-from sqs_client import SQSClient
-from ftd_client import FTDClient
+from .config import load_config
+from .redis_client import RedisClient
+from .dynamodb_client import DynamoDBClient
+from .sqs_client import SQSClient
+from .ftd_client import FTDClient
 
 logger = logging.getLogger(__name__)
 

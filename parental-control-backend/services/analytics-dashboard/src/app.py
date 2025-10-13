@@ -7,8 +7,8 @@ from datetime import datetime
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
-from config import load_config
-from analytics_client import AnalyticsClient
+from .config import load_config
+from .analytics_client import AnalyticsClient
 
 # Configure logging
 config = load_config()
@@ -151,6 +151,62 @@ def get_detailed_report(child_phone: str):
 
     except Exception as e:
         logger.error(f"Error getting detailed report: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/v1/session/phone/<phone_number>', methods=['GET'])
+def get_session_by_phone(phone_number: str):
+    """Get current active session for a phone number"""
+    try:
+        session = analytics_client.get_current_session(phone_number)
+
+        if session:
+            return jsonify(session), 200
+        else:
+            return jsonify({
+                'phoneNumber': phone_number,
+                'status': 'no_active_session',
+                'message': 'No active session found for this phone number'
+            }), 404
+
+    except Exception as e:
+        logger.error(f"Error getting session by phone: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/v1/session/ip/<ip_address>', methods=['GET'])
+def get_session_by_ip(ip_address: str):
+    """Get session by IP address (reverse lookup)"""
+    try:
+        session = analytics_client.get_session_by_ip(ip_address)
+
+        if session:
+            return jsonify(session), 200
+        else:
+            return jsonify({
+                'ipAddress': ip_address,
+                'status': 'not_found',
+                'message': 'No session found for this IP address'
+            }), 404
+
+    except Exception as e:
+        logger.error(f"Error getting session by IP: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/v1/sessions/active/count', methods=['GET'])
+def get_active_sessions_count():
+    """Get count of all active sessions"""
+    try:
+        count = analytics_client.get_active_sessions_count()
+
+        return jsonify({
+            'activeSessionsCount': count,
+            'timestamp': datetime.utcnow().isoformat() + 'Z'
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error getting active sessions count: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 

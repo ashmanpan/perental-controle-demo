@@ -8,7 +8,7 @@ import boto3
 from boto3.dynamodb.conditions import Key
 from decimal import Decimal
 
-from config import Config
+from .config import Config
 
 logger = logging.getLogger(__name__)
 

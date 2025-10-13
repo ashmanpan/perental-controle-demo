@@ -1,0 +1,38 @@
+[
+  {
+    "ParameterKey": "VpcId",
+    "ParameterValue": "vpc-01c0dbaf4ba865d8a"
+  },
+  {
+    "ParameterKey": "ManagementSubnetId",
+    "ParameterValue": "subnet-0ca09975f2c86fc0a"
+  },
+  {
+    "ParameterKey": "DiagnosticSubnetId",
+    "ParameterValue": "subnet-0ca09975f2c86fc0a"
+  },
+  {
+    "ParameterKey": "OutsideSubnetId",
+    "ParameterValue": "subnet-0ca09975f2c86fc0a"
+  },
+  {
+    "ParameterKey": "InsideSubnetId",
+    "ParameterValue": "subnet-06a9ada40b0785f34"
+  },
+  {
+    "ParameterKey": "InstanceType",
+    "ParameterValue": "c5.xlarge"
+  },
+  {
+    "ParameterKey": "KeyPairName",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "AdminPassword",
+    "ParameterValue": "Cisco@123456"
+  },
+  {
+    "ParameterKey": "FTDHostname",
+    "ParameterValue": "ftdv-parental-control"
+  }
+]
