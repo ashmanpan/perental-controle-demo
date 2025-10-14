@@ -96,8 +96,8 @@ class FTDSSHClient:
             self.execute_command(self.password)  # Enable password
             self.execute_command('configure terminal')
 
-            # Create access-list rule
-            command = f"access-list {acl_name} extended deny {protocol.lower()} host {source_ip} any eq {port}"
+            # Create access-list rule with logging enabled for Splunk
+            command = f"access-list {acl_name} extended deny {protocol.lower()} host {source_ip} any eq {port} log"
             output = self.execute_command(command)
 
             # Save config
