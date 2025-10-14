@@ -19,15 +19,31 @@ class RuleManager:
     def __init__(self, config: Config):
         self.config = config
 
+        # Lazy initialization - don't connect until first use
+        self.fmc_client = None
+        self.ssh_client = None
+        self.use_api = None
+        self.access_policy = None
+        self._initialized = False
+
+        logger.info("RuleManager created, will initialize on first use")
+
+    def _ensure_initialized(self):
+        """Lazy initialization - connect to FTD on first use"""
+        if self._initialized:
+            return
+
+        logger.info("Initializing FTD connection...")
+
         # Try API first
         try:
-            self.fmc_client = FMCAPIClient(config)
+            self.fmc_client = FMCAPIClient(self.config)
             self.use_api = True
             logger.info("Using FMC REST API for rule management")
 
             # Get access policy
             self.access_policy = self.fmc_client.get_access_policy(
-                config.ftd.access_policy_name
+                self.config.ftd.access_policy_name
             )
 
             if not self.access_policy:
@@ -39,8 +55,11 @@ class RuleManager:
 
         # Initialize SSH client as fallback
         if not self.use_api:
-            self.ssh_client = FTDSSHClient(config)
+            self.ssh_client = FTDSSHClient(self.config)
             logger.info("Using SSH CLI for rule management")
+
+        self._initialized = True
+        logger.info(f"RuleManager initialized (mode: {'API' if self.use_api else 'SSH'})")
 
     def create_block_rule(self,
                          source_ip: str,
@@ -48,6 +67,8 @@ class RuleManager:
                          ports: List[Dict],
                          msisdn: str) -> Optional[Dict]:
         """Create a firewall rule to block an application"""
+        self._ensure_initialized()
+
         rule_name = f"PARENTAL_BLOCK_{msisdn.replace('+', '')}_{app_name}"
 
         if self.use_api:
@@ -129,6 +150,8 @@ class RuleManager:
                    new_source_ip: str,
                    policy_id: Optional[str] = None) -> Optional[Dict]:
         """Update rule with new source IP"""
+        self._ensure_initialized()
+
         if self.use_api:
             return self._update_rule_via_api(rule_id, new_source_ip, policy_id)
         else:
@@ -168,6 +191,8 @@ class RuleManager:
                    rule_id: str,
                    policy_id: Optional[str] = None) -> bool:
         """Delete a firewall rule"""
+        self._ensure_initialized()
+
         if self.use_api:
             return self._delete_rule_via_api(rule_id, policy_id)
         else:
@@ -199,6 +224,8 @@ class RuleManager:
 
     def verify_rule(self, rule_id: str, policy_id: Optional[str] = None) -> bool:
         """Verify that a rule exists"""
+        self._ensure_initialized()
+
         if self.use_api:
             return self._verify_rule_via_api(rule_id, policy_id)
         else:
@@ -229,6 +256,8 @@ class RuleManager:
 
     def deploy_changes(self, device_ids: List[str]) -> Optional[str]:
         """Deploy policy changes to FTD devices (API only)"""
+        self._ensure_initialized()
+
         if not self.use_api:
             logger.info("SSH mode: changes are already applied, no deployment needed")
             return "ssh_immediate"
@@ -242,6 +271,8 @@ class RuleManager:
 
     def get_deployment_status(self, deployment_id: str) -> Optional[Dict]:
         """Get deployment status (API only)"""
+        self._ensure_initialized()
+
         if not self.use_api:
             return {'status': 'completed', 'method': 'SSH'}
 
